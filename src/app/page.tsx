@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef, useCallback } from "react";
 import { PromptEditor } from "@/components/PromptEditor";
 import { LivePreview } from "@/components/LivePreview";
 import { useCredits } from "@/hooks/useCredits";
@@ -21,14 +21,18 @@ export default function Home() {
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const { credits, totalCredits, percentage, deductCredits } = useCredits();
 
+  // Ref to track live-edited HTML from the preview editor (avoids iframe reload)
+  const editedHtmlRef = useRef<string>("");
+
   const handleGenerate = async (
     prompt: string,
     imageBase64: string | null = null,
     mimeType: string | null = null,
-    model: string = "gemini-2.0-flash"
+    model: string = "gemini-2.5-flash"
   ) => {
     setLoading(true);
     setErrorMsg(null);
+    editedHtmlRef.current = "";
     try {
       const resp = await fetch("/api/generate", {
         method: "POST",
@@ -64,17 +68,17 @@ export default function Home() {
   };
 
   const handleLoadSample = () => {
+    editedHtmlRef.current = "";
     setHtmlContent(SAMPLE_TEMPLATE.html);
     setMjml(SAMPLE_TEMPLATE.mjml);
     setMessages([{ role: "model", text: "Here is your sample template. Try selecting text in the live preview to edit inline properties and text!" } as Message]);
     setErrorMsg(null);
   };
 
-  const handleMjmlChange = (_newMjml: string, newHtml: string) => {
-    // When user edits text in the preview panel, update the HTML
-    // (We keep mjml unchanged since we're only doing DOM-level edits)
-    setHtmlContent(newHtml);
-  };
+  // Store edited HTML in ref (not state) to prevent iframe reload on every edit
+  const handleMjmlChange = useCallback((_newMjml: string, newHtml: string) => {
+    editedHtmlRef.current = newHtml;
+  }, []);
 
   const handleCopyMjml = () => {
     if (mjml) {
@@ -84,7 +88,7 @@ export default function Home() {
   };
 
   const handleExportHtml = () => {
-    const content = htmlContent;
+    const content = editedHtmlRef.current || htmlContent;
     if (content) {
       const blob = new Blob([content], { type: "text/html" });
       const url = URL.createObjectURL(blob);

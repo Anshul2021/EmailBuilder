@@ -6,7 +6,6 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Button } from "./UI/Button";
 import { TextArea } from "./UI/TextArea";
 import { ImageUploader } from "./UI/ImageUploader";
-import { Select } from "./UI/Select";
 
 interface Message {
     role: "user" | "model";
@@ -36,13 +35,8 @@ const STARTER_PROMPTS = [
     { icon: "🤝", label: "Onboarding", prompt: "A 3-step onboarding email guide for a SaaS app with icons and clean layout" },
 ];
 
-const MODELS = [
-    { label: "Gemini 2.5 Flash", value: "gemini-2.5-flash" },
-    { label: "Gemini 2.0 Flash", value: "gemini-2.0-flash" },
-    { label: "Gemini 2.0 Flash Lite", value: "gemini-2.0-flash-lite" },
-    { label: "Gemini 1.5 Pro", value: "gemini-1.5-pro" },
-    { label: "Gemini 1.5 Flash", value: "gemini-1.5-flash" },
-];
+const ACTIVE_MODEL = "gemini-2.5-flash";
+const ACTIVE_MODEL_LABEL = "Gemini 2.5 Flash";
 
 export function PromptEditor({
     onGenerate,
@@ -59,7 +53,7 @@ export function PromptEditor({
     const [prompt, setPrompt] = useState("");
     const [imageBase64, setImageBase64] = useState<string | null>(null);
     const [mimeType, setMimeType] = useState<string | null>(null);
-    const [selectedModel, setSelectedModel] = useState("gemini-2.5-flash");
+    const selectedModel = ACTIVE_MODEL;
     const [showImageUploader, setShowImageUploader] = useState(false);
     const messagesEndRef = useRef<HTMLDivElement>(null);
     const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -268,16 +262,10 @@ export function PromptEditor({
                 )}
                 <form onSubmit={handleSubmit}>
                     <div className="prompt-glow rounded-2xl border border-slate-200 bg-white overflow-hidden transition-all" style={{ boxShadow: "0 2px 12px rgba(15,23,42,0.07), 0 8px 28px rgba(15,23,42,0.05)" }}>
-                        {/* Model selector row */}
+                        {/* Model indicator row */}
                         <div className="flex items-center gap-1.5 px-3 pt-2.5 pb-1 border-b border-slate-100">
                             <Zap className="w-3 h-3 text-violet-500 shrink-0" />
-                            <Select
-                                options={MODELS}
-                                value={selectedModel}
-                                onChange={e => setSelectedModel(e.target.value)}
-                                className="text-[11px] py-0 px-1.5 h-auto border-none shadow-none bg-transparent focus:ring-0 text-slate-500 font-semibold cursor-pointer"
-                                containerClassName="flex-1"
-                            />
+                            <span className="text-[11px] font-semibold text-slate-500 select-none">{ACTIVE_MODEL_LABEL}</span>
                         </div>
 
                         {/* Text input */}

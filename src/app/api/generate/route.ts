@@ -1,9 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
-import { GoogleGenerativeAI } from "@google/generative-ai";
-import mjml2html from "mjml";
+import { GoogleGenerativeAI, Part, Content } from "@google/generative-ai";
 
-// We disable caching for this route as each generation is unique
 export const dynamic = "force-dynamic";
+export const maxDuration = 60;
 
 const ai = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "");
 
@@ -23,84 +22,85 @@ Follow these strict rules:
 export async function POST(req: NextRequest) {
     try {
         const body = await req.json();
-        const { prompt } = body;
+        const { prompt, imageBase64, mimeType, history = [], model: requestedModel } = body;
+        const modelName: string = requestedModel || "gemini-2.5-flash";
 
-        if (!prompt) {
-            return NextResponse.json({ error: "Prompt is required" }, { status: 400 });
+        if (!prompt && !imageBase64) {
+            return NextResponse.json({ error: "Prompt or an image is required" }, { status: 400 });
         }
 
         if (!process.env.GEMINI_API_KEY) {
             return NextResponse.json({ error: "GEMINI_API_KEY is not set" }, { status: 500 });
         }
 
-        console.log("Generating template for prompt:", prompt);
+        console.log(`[API] Generating with model: ${modelName}`);
 
         let mjmlCode = "";
         try {
-            // Found gemini-2.5-flash is available for this key via list-models
             const model = ai.getGenerativeModel({
-                model: "gemini-2.5-flash",
+                model: modelName,
                 systemInstruction: SYSTEM_PROMPT
             });
-            const result = await model.generateContent(prompt);
-            const response = await result.response;
-            mjmlCode = response.text() || "";
-        } catch (genError: any) {
-            console.error("Gemini 2.5 Flash generation failed:", genError.message);
-            throw genError; // Re-throw to be caught by the outer catch block
-        }
 
-        console.log("Received MJML code from Gemini.");
-
-        // Clean up any potential markdown code blocks if the model didn't follow the 'no markdown' instruction
-        mjmlCode = mjmlCode.replace(/```(mjml|html)?\n/g, '').replace(/```$/m, '').trim();
-
-        if (!mjmlCode.startsWith('<mjml>')) {
-            console.warn("Generated output does not look like valid MJML (starting with <mjml>):", mjmlCode.substring(0, 100) + "...");
-        }
-
-        // Compile MJML to HTML
-        try {
-            console.log("Starting MJML compilation...");
-            // Handle different import styles just in case
-            const mjmlFunc = typeof mjml2html === 'function' ? mjml2html : (mjml2html as any).default;
-
-            if (typeof mjmlFunc !== 'function') {
-                throw new Error("MJML library is not loaded correctly as a function.");
+            const parts: Part[] = [];
+            if (prompt) parts.push({ text: prompt });
+            if (imageBase64 && mimeType) {
+                parts.push({
+                    inlineData: {
+                        data: imageBase64,
+                        mimeType: mimeType
+                    }
+                });
             }
 
+            const currentMessage: Content = { role: "user", parts };
+            const formattedHistory: Content[] = Array.isArray(history) ? history.map((msg: any) => ({
+                role: msg.role === 'model' ? 'model' : 'user',
+                parts: Array.isArray(msg.parts) ? msg.parts.map((p: any) => ({ text: p.text || "" })) : []
+            })) : [];
+
+            const result = await model.generateContent({ contents: [...formattedHistory, currentMessage] });
+            mjmlCode = result.response.text() || "";
+            console.log("[API] Gemini response received, length:", mjmlCode.length);
+        } catch (genError: any) {
+            console.error("[API] Gemini error:", genError.message);
+            return NextResponse.json({
+                error: "Gemini Generation Failed",
+                details: genError.message
+            }, { status: 500 });
+        }
+
+        // Clean MJML  
+        mjmlCode = mjmlCode.replace(/```(mjml|html)?\n?/g, '').replace(/```$/m, '').trim();
+
+        // Compile MJML → HTML (mjml is now excluded from bundling via next.config.mjs)
+        try {
+            console.log("[API] Compiling MJML...");
+            const mjml2html = require("mjml");
+            const mjmlFunc = typeof mjml2html === "function" ? mjml2html : mjml2html.default;
+
             const { html, errors } = mjmlFunc(mjmlCode, {
-                validationLevel: 'soft',
+                validationLevel: "soft",
                 keepComments: false,
             });
 
-            if (errors && errors.length > 0) {
-                console.warn("MJML compiler warnings/errors:", errors);
-            }
+            if (errors?.length > 0) console.warn("[API] MJML warnings:", errors.length);
+            console.log("[API] Compilation successful!");
 
-            console.log("Compilation successful.");
+            return NextResponse.json({ mjml: mjmlCode, html });
+        } catch (compileError: any) {
+            console.error("[API] MJML compile error:", compileError.message);
             return NextResponse.json({
-                mjml: mjmlCode,
-                html: html
-            });
-        } catch (compileError: unknown) {
-            console.error("MJML Compilation Error details:", compileError);
-            const errorMessage = compileError instanceof Error ? compileError.message : "Unknown compile error";
-            return NextResponse.json({ error: "Failed to compile MJML to HTML", details: errorMessage }, { status: 500 });
+                error: "Failed to compile MJML",
+                details: compileError.message
+            }, { status: 500 });
         }
 
     } catch (error: any) {
-        console.error("Critical API Error details:", error);
-
-        // Handle specific Gemini API errors like Quota Exceeded (429)
-        if (error.status === 429 || error.message?.includes("429") || error.message?.includes("quota")) {
-            return NextResponse.json({
-                error: "Gemini API Quota Exceeded",
-                details: "You've exceeded your current free tier quota for the Gemini API. Please wait a minute or check your Google AI Studio account."
-            }, { status: 429 });
-        }
-
-        const errorMessage = error instanceof Error ? error.message : "Unknown internal error";
-        return NextResponse.json({ error: "Internal Server Error", details: errorMessage }, { status: 500 });
+        console.error("[API] Critical error:", error.message);
+        return NextResponse.json({
+            error: "Internal Server Error",
+            details: error.message
+        }, { status: 500 });
     }
 }

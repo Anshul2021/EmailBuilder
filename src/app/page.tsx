@@ -5,19 +5,31 @@ import { PromptEditor } from "@/components/PromptEditor";
 import { LivePreview } from "@/components/LivePreview";
 import { useCredits } from "@/hooks/useCredits";
 
+interface Message {
+  role: "user" | "model";
+  text: string;
+  isImage?: boolean;
+}
+
 export default function Home() {
   const [htmlContent, setHtmlContent] = useState<string>("");
   const [mjml, setMjml] = useState<string>("");
   const [loading, setLoading] = useState(false);
+  const [messages, setMessages] = useState<Message[]>([]);
   const { credits, totalCredits, percentage, deductCredits } = useCredits();
 
-  const handleGenerate = async (prompt: string) => {
+  const handleGenerate = async (
+    prompt: string,
+    imageBase64: string | null = null,
+    mimeType: string | null = null,
+    model: string = "gemini-2.5-flash"
+  ) => {
     setLoading(true);
     try {
       const resp = await fetch("/api/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ prompt }),
+        body: JSON.stringify({ prompt, imageBase64, mimeType, history: messages, model }),
       });
 
       const data = await resp.json();
@@ -29,14 +41,28 @@ export default function Home() {
       setHtmlContent(data.html);
       setMjml(data.mjml);
 
-      // Deduct credits based on the length of the MJML code
-      deductCredits(data.mjml.length);
-    } catch (error: any) {
-      console.error("Failed to generate template:", error.message || error);
-      alert(`Failed to generate template: ${error.message || "An unexpected error occurred."}`);
+      // Append to conversation history
+      const userMessageText = imageBase64 ? `${prompt}` : prompt;
+      setMessages(prev => [
+        ...prev,
+        { role: "user", parts: [{ text: userMessageText }], isImage: !!imageBase64, text: userMessageText } as unknown as Message,
+        { role: "model", text: data.mjml } as Message,
+      ]);
+
+      deductCredits(data.mjml.length + (imageBase64 ? 500 : 0));
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : "An unexpected error occurred.";
+      console.error("Failed to generate template:", message);
+      alert(`Failed to generate template: ${message}`);
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleMjmlChange = (_newMjml: string, newHtml: string) => {
+    // When user edits text in the preview panel, update the HTML
+    // (We keep mjml unchanged since we're only doing DOM-level edits)
+    setHtmlContent(newHtml);
   };
 
   const handleCopyMjml = () => {
@@ -47,8 +73,9 @@ export default function Home() {
   };
 
   const handleExportHtml = () => {
-    if (htmlContent) {
-      const blob = new Blob([htmlContent], { type: "text/html" });
+    const content = htmlContent;
+    if (content) {
+      const blob = new Blob([content], { type: "text/html" });
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
@@ -61,9 +88,9 @@ export default function Home() {
   };
 
   return (
-    <main className="flex h-screen w-full overflow-hidden bg-background text-foreground">
-      {/* Left Pane - Chat Area */}
-      <div className="w-full md:w-[400px] lg:w-[500px] shrink-0 h-full">
+    <main className="flex h-screen w-full overflow-hidden bg-[#f5f7fa]">
+      {/* Left Panel - Prompt Sidebar */}
+      <div className="w-[340px] lg:w-[380px] shrink-0 h-full shadow-panel">
         <PromptEditor
           onGenerate={handleGenerate}
           isLoading={loading}
@@ -73,12 +100,20 @@ export default function Home() {
           credits={credits}
           totalCredits={totalCredits}
           percentage={percentage}
+          messages={messages}
         />
       </div>
 
-      {/* Right Pane - Preview Area */}
-      <div className="hidden md:flex flex-1 h-full relative">
-        <LivePreview html={htmlContent} isLoading={loading} />
+      {/* Right Panel - Preview */}
+      <div className="flex-1 h-full min-w-0">
+        <LivePreview
+          html={htmlContent}
+          mjml={mjml}
+          isLoading={loading}
+          onMjmlChange={handleMjmlChange}
+          onCopyMjml={handleCopyMjml}
+          onExportHtml={handleExportHtml}
+        />
       </div>
     </main>
   );

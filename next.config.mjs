@@ -1,12 +1,9 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-    serverExternalPackages: ["mjml"],
-    webpack: (config, { isServer }) => {
-        if (isServer) {
-            if (!config.externals) config.externals = [];
-            config.externals.push('mjml');
-        }
-        return config;
+    experimental: {
+        // This is the CORRECT key for Next.js 14.2.x 
+        // Prevents mjml (and its deps like uglify-js) from being bundled by the RSC bundler
+        serverComponentsExternalPackages: ["mjml"],
     },
 };
 

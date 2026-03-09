@@ -82,22 +82,15 @@ export function LivePreview({ html, mjml, isLoading, onMjmlChange, onCopyMjml, o
         if (props.fontFamily) el.style.fontFamily = props.fontFamily;
     }, []);
 
-    const handleIframeLoad = useCallback(() => {
-        const iframe = iframeRef.current;
-        if (!iframe?.contentDocument || !iframe.contentWindow) return;
+    // Helper to inject styles into the iframe
+    const injectIframeStyles = useCallback((doc: Document) => {
+        const styleId = "ag-preview-styles";
+        if (doc.getElementById(styleId)) return;
 
-        // Clear any stale selection from previous template
-        selectedElementRef.current = null;
-        setHasSelection(false);
-        setSelectionIsImage(false);
-        setSelectedProps(DEFAULT_PROPS);
-
-        const doc = iframe.contentDocument;
-        const win = iframe.contentWindow;
-
-        // Inject interaction styles with hover feedback
         const style = doc.createElement("style");
-        style.textContent = `
+        style.id = styleId;
+        style.innerHTML = `
+            /* Interactive states */
             p, h1, h2, h3, h4, h5, h6, td, span, a {
                 cursor: pointer !important;
                 transition: outline 0.15s ease;
@@ -135,8 +128,39 @@ export function LivePreview({ html, mjml, isLoading, onMjmlChange, onCopyMjml, o
                 border-radius: 2px;
                 white-space: pre-wrap;
             }
+            /* Robust hidden scrollbars & smooth scroll */
+            html::-webkit-scrollbar, body::-webkit-scrollbar, *::-webkit-scrollbar { 
+                display: none !important; 
+                width: 0 !important;
+                height: 0 !important;
+            }
+            html, body, * {
+                scrollbar-width: none !important;
+                -ms-overflow-style: none !important;
+                scroll-behavior: smooth !important;
+                overflow: -moz-scrollbars-none !important;
+            }
         `;
         doc.head.appendChild(style);
+    }, []);
+
+    // Handle iframe load
+    const handleIframeLoad = useCallback(() => {
+        const iframe = iframeRef.current;
+        if (!iframe || !iframe.contentDocument) return;
+
+        // Clear any stale selection from previous template
+        selectedElementRef.current = null;
+        setHasSelection(false);
+        setSelectionIsImage(false);
+        setSelectedProps(DEFAULT_PROPS);
+
+        const doc = iframe.contentDocument;
+        const win = iframe.contentWindow;
+        if (!win) return;
+
+        // Inject selection & hide styles
+        injectIframeStyles(doc);
 
         const EDITABLE_TAGS = ["P", "H1", "H2", "H3", "H4", "H5", "H6", "TD", "SPAN", "A"];
 
@@ -247,7 +271,13 @@ export function LivePreview({ html, mjml, isLoading, onMjmlChange, onCopyMjml, o
             }
         });
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, []);
+    }, [injectIframeStyles]);
+
+    // Ensure styles are re-injected when content changes
+    useEffect(() => {
+        const doc = iframeRef.current?.contentDocument;
+        if (doc) injectIframeStyles(doc);
+    }, [html, injectIframeStyles]);
 
     // Apply style changes to the selected iframe element
     const applyStyle = useCallback((prop: Partial<TextProperties>) => {
@@ -399,7 +429,7 @@ export function LivePreview({ html, mjml, isLoading, onMjmlChange, onCopyMjml, o
             <div className="flex flex-1 min-h-0">
 
                 {/* ── Preview canvas ── */}
-                <div className="flex-1 overflow-auto p-6 flex items-start justify-center relative">
+                <div className="flex-1 overflow-auto p-6 flex items-start justify-center relative scrollbar-hide">
 
                     {/* Loading overlay */}
                     {isLoading && (
@@ -419,10 +449,10 @@ export function LivePreview({ html, mjml, isLoading, onMjmlChange, onCopyMjml, o
                     {/* Email frame */}
                     <div
                         className={clsx(
-                            "bg-white shadow-2xl rounded-xl overflow-hidden border border-slate-200 transition-all duration-500 ease-out",
+                            "bg-white shadow-2xl rounded-xl overflow-hidden border border-slate-200 transition-all duration-500 ease-out scrollbar-hide",
                             viewMode === "desktop" ? "w-full max-w-3xl min-h-[600px]" : "w-[390px] min-h-[700px]"
                         )}
-                        style={{ height: "calc(100vh - 200px)", maxHeight: 900 }}
+                        style={{ height: "calc(100vh - 100px)", maxHeight: 800 }}
                     >
                         {html ? (
                             <iframe
@@ -430,7 +460,7 @@ export function LivePreview({ html, mjml, isLoading, onMjmlChange, onCopyMjml, o
                                 title="Email Preview"
                                 srcDoc={html}
                                 onLoad={handleIframeLoad}
-                                className="w-full h-full border-0 bg-white"
+                                className="w-full h-full border-0 bg-white scrollbar-hide"
                                 sandbox="allow-same-origin allow-scripts"
                             />
                         ) : (

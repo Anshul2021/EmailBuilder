@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "AI Email Builder",
+  title: "Email Builder",
   description: "AI powered email template builder with live preview",
 };
 

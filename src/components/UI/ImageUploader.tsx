@@ -1,5 +1,5 @@
 /* eslint-disable @next/next/no-img-element */
-import { useState, useRef, ChangeEvent, DragEvent } from "react";
+import { useState, useRef, ChangeEvent, DragEvent, useEffect } from "react";
 import { Upload, X, Image as ImageIcon } from "lucide-react";
 import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
@@ -18,6 +18,11 @@ export function ImageUploader({ onImageChange, className, previewUrl: initialPre
     const [dragActive, setDragActive] = useState(false);
     const [preview, setPreview] = useState<string | null>(initialPreview || null);
     const inputRef = useRef<HTMLInputElement>(null);
+
+    // Sync external previewUrl changes (e.g., when removing from parent)
+    useEffect(() => {
+        setPreview(initialPreview || null);
+    }, [initialPreview]);
 
     const handleDrag = (e: DragEvent<HTMLDivElement>) => {
         e.preventDefault();

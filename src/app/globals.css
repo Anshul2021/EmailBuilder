@@ -4,6 +4,37 @@
 @tailwind components;
 @tailwind utilities;
 
+/* PrimeReact & Quill styles */
+@import "primereact/resources/themes/lara-light-indigo/theme.css";
+@import "primereact/resources/primereact.min.css";
+@import "quill/dist/quill.snow.css";
+
+/* Editor Overrides */
+.modern-quill-editor .p-editor-container {
+  border-radius: 0.5rem;
+  overflow: hidden;
+  border: 1px solid #e2e8f0;
+}
+
+.modern-quill-editor .p-editor-toolbar {
+  background: #f8fafc;
+  border-bottom: 1px solid #e2e8f0;
+  border-top: none;
+  border-left: none;
+  border-right: none;
+  padding: 0.5rem;
+}
+
+.modern-quill-editor .p-editor-content {
+  border: none !important;
+  background: #ffffff;
+  font-size: 0.875rem;
+}
+
+.modern-quill-editor .ql-editor {
+  min-height: 180px;
+}
+
 @layer base {
   :root {
     --background: #f7f8fc;

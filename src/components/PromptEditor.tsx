@@ -240,7 +240,6 @@ export function PromptEditor({
                                 onImageChange={(base64, mime) => {
                                     setImageBase64(base64);
                                     setMimeType(mime);
-                                    if (!base64) setShowImageUploader(false);
                                 }}
                             />
                         </motion.div>
@@ -282,6 +281,30 @@ export function PromptEditor({
                                     handleSubmit();
                                 }
                             }}
+                            onPaste={e => {
+                                const items = e.clipboardData?.items;
+                                if (!items) return;
+                                for (let i = 0; i < items.length; i++) {
+                                    if (items[i].type.indexOf("image") !== -1) {
+                                        const file = items[i].getAsFile();
+                                        if (file) {
+                                            const reader = new FileReader();
+                                            reader.onload = (ev) => {
+                                                const result = ev.target?.result as string;
+                                                if (result) {
+                                                    const base64Data = result.split(",")[1];
+                                                    setImageBase64(base64Data);
+                                                    setMimeType(file.type);
+                                                    setShowImageUploader(true);
+                                                }
+                                            };
+                                            reader.readAsDataURL(file);
+                                            e.preventDefault();
+                                            break;
+                                        }
+                                    }
+                                }
+                            }}
                         />
 
                         {/* Bottom bar */}
@@ -293,7 +316,7 @@ export function PromptEditor({
                                 title="Attach image reference"
                             >
                                 {imageBase64
-                                    ? <X className="w-4 h-4" onClick={() => { setImageBase64(null); setMimeType(null); }} />
+                                    ? <X className="w-4 h-4" onClick={(e) => { e.stopPropagation(); setImageBase64(null); setMimeType(null); }} />
                                     : <Paperclip className="w-4 h-4" />
                                 }
                             </button>

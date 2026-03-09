@@ -5,6 +5,7 @@ import { Monitor, Smartphone, MailOpen, PanelRight, AlignLeft, AlignCenter, Alig
 import { clsx } from "clsx";
 import { Tooltip } from "./UI/Tooltip";
 import { motion, AnimatePresence } from "framer-motion";
+import { RichTextEditor } from "./UI/RichTextEditor";
 
 interface LivePreviewProps {
     html: string;
@@ -162,7 +163,7 @@ export function LivePreview({ html, mjml, isLoading, onMjmlChange, onCopyMjml, o
         // Inject selection & hide styles
         injectIframeStyles(doc);
 
-        const EDITABLE_TAGS = ["P", "H1", "H2", "H3", "H4", "H5", "H6", "TD", "SPAN", "A"];
+        const EDITABLE_TAGS = ["P", "DIV", "H1", "H2", "H3", "H4", "H5", "H6", "TD", "SPAN", "A", "STRONG", "B", "I", "EM"];
 
         doc.addEventListener("click", (e) => {
             const target = e.target as HTMLElement;
@@ -225,7 +226,7 @@ export function LivePreview({ html, mjml, isLoading, onMjmlChange, onCopyMjml, o
                 color: rgbToHex(cs.color) || "#1e293b",
                 align: (["left", "center", "right"].includes(align) ? align : "left") as "left" | "center" | "right",
                 fontFamily: cs.fontFamily || "",
-                content: target.innerText || target.textContent || "",
+                content: target.innerHTML || target.textContent || "",
                 elementTag: target.tagName.toLowerCase(),
             };
 
@@ -239,7 +240,7 @@ export function LivePreview({ html, mjml, isLoading, onMjmlChange, onCopyMjml, o
         doc.addEventListener("input", (e) => {
             const target = e.target as HTMLElement;
             if (target.contentEditable === "true") {
-                const newContent = target.innerText || target.textContent || "";
+                const newContent = target.innerHTML || target.textContent || "";
                 setSelectedProps(prev => {
                     const next = { ...prev, content: newContent };
                     // Re-apply all styles immediately to prevent font corruption
@@ -288,7 +289,24 @@ export function LivePreview({ html, mjml, isLoading, onMjmlChange, onCopyMjml, o
                 if (prop.fontSize !== undefined) el.style.fontSize = `${next.fontSize}px`;
                 if (prop.fontWeight !== undefined) el.style.fontWeight = next.fontWeight;
                 if (prop.color !== undefined) el.style.color = next.color;
-                if (prop.align !== undefined) el.style.textAlign = next.align;
+                if (prop.align !== undefined) {
+                    el.style.textAlign = next.align;
+                    if (el.hasAttribute('align')) el.setAttribute('align', next.align);
+
+                    // If element is inline, also align its block parent
+                    const display = el.ownerDocument.defaultView?.getComputedStyle(el).display;
+                    if (display === 'inline' || display === 'inline-block') {
+                        let parent = el.parentElement;
+                        while (parent && parent.tagName !== 'BODY') {
+                            if (["P", "DIV", "H1", "H2", "H3", "H4", "H5", "H6", "TD"].includes(parent.tagName)) {
+                                parent.style.textAlign = next.align;
+                                if (parent.hasAttribute('align')) parent.setAttribute('align', next.align);
+                                break;
+                            }
+                            parent = parent.parentElement;
+                        }
+                    }
+                }
                 // Never reset fontFamily — only apply if we're explicitly setting it
             }
             propagateChanges();
@@ -312,14 +330,15 @@ export function LivePreview({ html, mjml, isLoading, onMjmlChange, onCopyMjml, o
     };
 
     // Handle text content change from the sidebar textarea
-    const handleContentChange = useCallback((newContent: string) => {
+    const handleContentChange = useCallback((newContent: string | null) => {
+        const contentStr = newContent || "";
         setSelectedProps(prev => {
-            const next = { ...prev, content: newContent };
+            const next = { ...prev, content: contentStr };
             const el = selectedElementRef.current;
             if (el) {
-                // Set text content safely without losing styles
-                el.textContent = newContent;
-                // Immediately re-apply all styles since textContent assignment resets inline elements
+                // Set HTML content safely
+                el.innerHTML = contentStr;
+                // Immediately re-apply all styles since innerHTML assignment resets inline elements
                 reapplyStyles(el, next);
                 propagateChanges();
             }
@@ -482,18 +501,18 @@ export function LivePreview({ html, mjml, isLoading, onMjmlChange, onCopyMjml, o
                     {showEditPanel && html && (
                         <motion.div
                             initial={{ width: 0, opacity: 0 }}
-                            animate={{ width: 272, opacity: 1 }}
+                            animate={{ width: 340, opacity: 1 }}
                             exit={{ width: 0, opacity: 0 }}
                             transition={{ duration: 0.22, ease: "easeOut" }}
                             className="shrink-0 overflow-hidden border-l border-slate-200 bg-white h-full"
                         >
-                            <div className="w-[272px] h-full flex flex-col">
+                            <div className="w-[340px] h-full flex flex-col">
                                 <div className="p-4 border-b border-slate-100">
                                     <div className="flex items-center gap-2">
                                         <PanelRight className="w-4 h-4 text-violet-500" />
                                         <h3 className="text-sm font-bold text-slate-800">Properties</h3>
                                     </div>
-                                    <p className="text-[11px] text-slate-400 mt-0.5">Click text or images in the preview</p>
+                                    <p className="text-xs text-slate-400 mt-0.5">Click text or images in the preview</p>
                                 </div>
 
                                 {!hasSelection ? (
@@ -537,77 +556,80 @@ export function LivePreview({ html, mjml, isLoading, onMjmlChange, onCopyMjml, o
                                                     Edit inline
                                                 </button>
                                             </div>
-                                            <textarea
+                                            <RichTextEditor
                                                 value={selectedProps.content}
-                                                onChange={e => handleContentChange(e.target.value)}
-                                                rows={3}
-                                                className="w-full text-xs text-slate-700 border border-slate-200 rounded-lg px-3 py-2 resize-none focus:outline-none focus:ring-2 focus:ring-violet-400/30 focus:border-violet-300 bg-white leading-relaxed"
-                                                placeholder="Select an element to edit its text..."
+                                                onChange={handleContentChange}
+                                                placeholder="Write your email copy here..."
                                             />
                                         </div>
 
-                                        {/* Font Size */}
-                                        <div>
-                                            <div className="flex items-center justify-between mb-1.5">
-                                                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Font Size</label>
-                                                <span className="text-xs font-bold text-violet-600">{selectedProps.fontSize}px</span>
-                                            </div>
-                                            <input
-                                                type="range" min={8} max={72} step={1}
-                                                value={selectedProps.fontSize}
-                                                onChange={e => applyStyle({ fontSize: Number(e.target.value) })}
-                                                className="w-full accent-violet-600"
-                                            />
-                                            <div className="flex justify-between text-[10px] text-slate-300 mt-0.5">
-                                                <span>8px</span><span>72px</span>
-                                            </div>
-                                        </div>
+                                        {/* Hidden Legacy Controls: PrimeReact Editor provides these natively */}
+                                        {false && (
+                                            <>
+                                                {/* Font Size */}
+                                                <div>
+                                                    <div className="flex items-center justify-between mb-1.5">
+                                                        <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Font Size</label>
+                                                        <span className="text-xs font-bold text-violet-600">{selectedProps.fontSize}px</span>
+                                                    </div>
+                                                    <input
+                                                        type="range" min={8} max={72} step={1}
+                                                        value={selectedProps.fontSize}
+                                                        onChange={e => applyStyle({ fontSize: Number(e.target.value) })}
+                                                        className="w-full accent-violet-600"
+                                                    />
+                                                    <div className="flex justify-between text-[10px] text-slate-300 mt-0.5">
+                                                        <span>8px</span><span>72px</span>
+                                                    </div>
+                                                </div>
 
-                                        {/* Font Weight */}
-                                        <div>
-                                            <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block mb-1.5">Weight</label>
-                                            <div className="flex gap-2">
-                                                {(["normal", "bold"] as const).map(w => (
-                                                    <button
-                                                        key={w}
-                                                        onClick={() => applyStyle({ fontWeight: w })}
-                                                        className={clsx(
-                                                            "flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-xs transition-all",
-                                                            selectedProps.fontWeight === w
-                                                                ? "bg-violet-600 text-white shadow-sm"
-                                                                : "bg-slate-100 text-slate-600 hover:bg-slate-200"
-                                                        )}
-                                                    >
-                                                        <Bold className="w-3.5 h-3.5" />
-                                                        {w === "bold" ? "Bold" : "Regular"}
-                                                    </button>
-                                                ))}
-                                            </div>
-                                        </div>
+                                                {/* Font Weight */}
+                                                <div>
+                                                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block mb-1.5">Weight</label>
+                                                    <div className="flex gap-2">
+                                                        {(["normal", "bold"] as const).map(w => (
+                                                            <button
+                                                                key={w}
+                                                                onClick={() => applyStyle({ fontWeight: w })}
+                                                                className={clsx(
+                                                                    "flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-xs transition-all",
+                                                                    selectedProps.fontWeight === w
+                                                                        ? "bg-violet-600 text-white shadow-sm"
+                                                                        : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                                                                )}
+                                                            >
+                                                                <Bold className="w-3.5 h-3.5" />
+                                                                {w === "bold" ? "Bold" : "Regular"}
+                                                            </button>
+                                                        ))}
+                                                    </div>
+                                                </div>
 
-                                        {/* Alignment */}
-                                        <div>
-                                            <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block mb-1.5">Alignment</label>
-                                            <div className="flex gap-1.5">
-                                                {(["left", "center", "right"] as const).map(align => {
-                                                    const Icon = ALIGN_ICONS[align];
-                                                    return (
-                                                        <button
-                                                            key={align}
-                                                            onClick={() => applyStyle({ align })}
-                                                            className={clsx(
-                                                                "flex-1 flex items-center justify-center py-2 rounded-lg transition-all",
-                                                                selectedProps.align === align
-                                                                    ? "bg-violet-600 text-white shadow-sm"
-                                                                    : "bg-slate-100 text-slate-600 hover:bg-slate-200"
-                                                            )}
-                                                        >
-                                                            <Icon className="w-3.5 h-3.5" />
-                                                        </button>
-                                                    );
-                                                })}
-                                            </div>
-                                        </div>
+                                                {/* Alignment */}
+                                                <div>
+                                                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block mb-1.5">Alignment</label>
+                                                    <div className="flex gap-1.5">
+                                                        {(["left", "center", "right"] as const).map(align => {
+                                                            const Icon = ALIGN_ICONS[align];
+                                                            return (
+                                                                <button
+                                                                    key={align}
+                                                                    onClick={() => applyStyle({ align })}
+                                                                    className={clsx(
+                                                                        "flex-1 flex items-center justify-center py-2 rounded-lg transition-all",
+                                                                        selectedProps.align === align
+                                                                            ? "bg-violet-600 text-white shadow-sm"
+                                                                            : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                                                                    )}
+                                                                >
+                                                                    <Icon className="w-3.5 h-3.5" />
+                                                                </button>
+                                                            );
+                                                        })}
+                                                    </div>
+                                                </div>
+                                            </>
+                                        )}
 
                                         {/* Text Color */}
                                         <div>

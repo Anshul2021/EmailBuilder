@@ -1,11 +1,12 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
-import { SendHorizonal, FileCode, FileImage, RefreshCw, Sparkles, Paperclip, X, Zap } from "lucide-react";
+import { SendHorizonal, FileCode, FileImage, RefreshCw, Sparkles, Paperclip, X, Zap, ChevronsLeft, ChevronsRight } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Button } from "./UI/Button";
 import { TextArea } from "./UI/TextArea";
 import { ImageUploader } from "./UI/ImageUploader";
+import { Skeleton } from "primereact/skeleton";
 
 interface Message {
     role: "user" | "model";
@@ -24,6 +25,8 @@ interface PromptEditorProps {
     percentage: number;
     messages: Message[];
     onLoadSample?: () => void;
+    isCollapsed?: boolean;
+    onToggleCollapse?: () => void;
 }
 
 const STARTER_PROMPTS = [
@@ -49,6 +52,8 @@ export function PromptEditor({
     percentage,
     messages,
     onLoadSample,
+    isCollapsed = false,
+    onToggleCollapse,
 }: PromptEditorProps) {
     const [prompt, setPrompt] = useState("");
     const [imageBase64, setImageBase64] = useState<string | null>(null);
@@ -76,265 +81,300 @@ export function PromptEditor({
     const canSubmit = (prompt.trim().length > 0 || !!imageBase64) && !isLoading;
 
     return (
-        <div className="flex flex-col h-full bg-white border-r border-slate-100 relative">
-
-            {/* ── Header ── */}
-            <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100 shrink-0">
-                <div className="flex items-center gap-2">
-                    <div className="w-8 h-8 rounded-xl bg-primary-600 flex items-center justify-center shadow-sm">
-                        <Sparkles className="w-4 h-4 text-white" />
-                    </div>
-                    <div>
-                        <h1 className="text-sm font-bold text-slate-900 leading-tight">Email Builder</h1>
-                        <p className="text-xs text-slate-400 font-medium">Powered by Gemini</p>
-                    </div>
-                </div>
-
-                {/* Credits badge */}
-                <div className="flex items-center gap-2">
-                    <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-full px-3 py-1.5">
-                        <div className="w-1.5 h-1.5 rounded-full bg-emerald-500"></div>
-                        <span className="text-xs font-semibold text-slate-600">{credits.toLocaleString()}</span>
-                        <span className="text-[10px] text-slate-400">/ {totalCredits.toLocaleString()}</span>
-                    </div>
-                </div>
-            </div>
-
-            {/* Credits progress */}
-            <div className="px-5 py-2 shrink-0">
-                <div className="flex items-center gap-2">
-                    <div className="flex-1 h-1 bg-slate-100 rounded-full overflow-hidden">
-                        <motion.div
-                            className="h-full bg-gradient-to-r from-primary-500 to-violet-400 rounded-full"
-                            initial={{ width: 0 }}
-                            animate={{ width: `${percentage}%` }}
-                            transition={{ duration: 0.8, ease: "easeOut" }}
-                        />
-                    </div>
-                    <span className="text-[10px] text-slate-400 font-medium whitespace-nowrap">AI Credits</span>
-                </div>
-            </div>
-
-            {/* ── Scroll area: chat or starters ── */}
-            <div className="flex-1 overflow-y-auto px-4 py-2 space-y-3">
-
-                {/* Starter prompts – only when no conversation */}
-                {!hasTemplate && messages.length === 0 && (
-                    <div className="animate-fade-in space-y-2.5 pt-1">
-                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest px-0.5">Quick start</p>
-                        <div className="grid grid-cols-2 gap-2">
-                            {STARTER_PROMPTS.map((sp) => (
-                                <button
-                                    key={sp.label}
-                                    onClick={() => {
-                                        setPrompt(sp.prompt);
-                                        textareaRef.current?.focus();
-                                    }}
-                                    className="starter-card"
-                                >
-                                    <span className="text-lg block mb-1">{sp.icon}</span>
-                                    <span className="text-xs font-semibold text-slate-700">{sp.label}</span>
-                                </button>
-                            ))}
+        <div className="relative flex h-full">
+            {/* ── Main Panel ── */}
+            <motion.div
+                initial={false}
+                animate={{ width: isCollapsed ? 0 : "100%", opacity: isCollapsed ? 0 : 1 }}
+                transition={{ duration: 0.28, ease: [0.4, 0, 0.2, 1] }}
+                className="flex flex-col h-full bg-white border-r border-slate-100 overflow-hidden"
+                style={{ minWidth: 0 }}
+            >
+                {/* ── Header ── */}
+                <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100 shrink-0">
+                    <div className="flex items-center gap-2">
+                        <div className="w-8 h-8 rounded-xl bg-primary-600 flex items-center justify-center shadow-sm">
+                            <Sparkles className="w-4 h-4 text-white" />
+                        </div>
+                        <div>
+                            <h1 className="text-sm font-bold text-slate-900 leading-tight">Email Builder</h1>
+                            <p className="text-xs text-slate-400 font-medium">Powered by Gemini</p>
                         </div>
                     </div>
-                )}
 
-                {/* Chat history */}
-                <AnimatePresence>
-                    {messages.map((msg, i) => (
+                    {/* Credits badge */}
+                    <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-full px-3 py-1.5">
+                            <div className="w-1.5 h-1.5 rounded-full bg-emerald-500"></div>
+                            <span className="text-xs font-semibold text-slate-600">{credits.toLocaleString()}</span>
+                            <span className="text-[10px] text-slate-400">/ {totalCredits.toLocaleString()}</span>
+                        </div>
+                    </div>
+                </div>
+
+                {/* Credits progress */}
+                <div className="px-5 py-2 shrink-0">
+                    <div className="flex items-center gap-2">
+                        <div className="flex-1 h-1 bg-slate-100 rounded-full overflow-hidden">
+                            <motion.div
+                                className="h-full bg-gradient-to-r from-primary-500 to-violet-400 rounded-full"
+                                initial={{ width: 0 }}
+                                animate={{ width: `${percentage}%` }}
+                                transition={{ duration: 0.8, ease: "easeOut" }}
+                            />
+                        </div>
+                        <span className="text-[10px] text-slate-400 font-medium whitespace-nowrap">AI Credits</span>
+                    </div>
+                </div>
+
+                {/* ── Scroll area: chat or starters ── */}
+                <div className="flex-1 overflow-y-auto px-4 py-2 space-y-3">
+
+                    {/* Starter prompts – only when no conversation */}
+                    {!hasTemplate && messages.length === 0 && (
+                        <div className="animate-fade-in space-y-2.5 pt-1">
+                            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest px-0.5">Quick start</p>
+                            <div className="grid grid-cols-2 gap-2">
+                                {STARTER_PROMPTS.map((sp) => (
+                                    <button
+                                        key={sp.label}
+                                        onClick={() => {
+                                            setPrompt(sp.prompt);
+                                            textareaRef.current?.focus();
+                                        }}
+                                        className="starter-card"
+                                    >
+                                        <span className="text-lg block mb-1">{sp.icon}</span>
+                                        <span className="text-xs font-semibold text-slate-700">{sp.label}</span>
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Chat history */}
+                    <AnimatePresence>
+                        {messages.map((msg, i) => (
+                            <motion.div
+                                key={i}
+                                initial={{ opacity: 0, y: 6 }}
+                                animate={{ opacity: 1, y: 0 }}
+                                transition={{ duration: 0.25 }}
+                                className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}
+                            >
+                                {msg.role === "model" && (
+                                    <div className="flex items-start gap-2 max-w-[85%]">
+                                        <div className="w-6 h-6 rounded-lg bg-primary-100 flex items-center justify-center shrink-0 mt-0.5">
+                                            <Sparkles className="w-3.5 h-3.5 text-primary-600" />
+                                        </div>
+                                        <div className="bg-slate-50 border border-slate-200 text-slate-700 text-xs rounded-xl rounded-tl-sm px-3.5 py-2.5 leading-relaxed">
+                                            <span className="font-semibold text-primary-600 text-[10px] block mb-0.5 uppercase tracking-wider">AI</span>
+                                            {msg.text.startsWith("<mjml>")
+                                                ? "✅ Email template generated successfully."
+                                                : msg.text}
+                                        </div>
+                                    </div>
+                                )}
+                                {msg.role === "user" && (
+                                    <div className="bg-primary-600 text-white text-xs rounded-xl rounded-tr-sm px-3.5 py-2.5 max-w-[80%] leading-relaxed shadow-sm">
+                                        {msg.isImage && <span className="opacity-70 block text-[10px] mb-0.5">📎 Image attached</span>}
+                                        {msg.text || "(image only)"}
+                                    </div>
+                                )}
+                            </motion.div>
+                        ))}
+                    </AnimatePresence>
+
+                    {/* Loading indicator */}
+                    {isLoading && (
                         <motion.div
-                            key={i}
                             initial={{ opacity: 0, y: 6 }}
                             animate={{ opacity: 1, y: 0 }}
-                            transition={{ duration: 0.25 }}
-                            className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}
+                            className="flex items-start gap-2"
                         >
-                            {msg.role === "model" && (
-                                <div className="flex items-start gap-2 max-w-[85%]">
-                                    <div className="w-6 h-6 rounded-lg bg-primary-100 flex items-center justify-center shrink-0 mt-0.5">
-                                        <Sparkles className="w-3.5 h-3.5 text-primary-600" />
-                                    </div>
-                                    <div className="bg-slate-50 border border-slate-200 text-slate-700 text-xs rounded-xl rounded-tl-sm px-3.5 py-2.5 leading-relaxed">
-                                        <span className="font-semibold text-primary-600 text-[10px] block mb-0.5 uppercase tracking-wider">AI</span>
-                                        {msg.text.startsWith("<mjml>")
-                                            ? "✅ Email template generated successfully."
-                                            : msg.text}
-                                    </div>
-                                </div>
-                            )}
-                            {msg.role === "user" && (
-                                <div className="bg-primary-600 text-white text-xs rounded-xl rounded-tr-sm px-3.5 py-2.5 max-w-[80%] leading-relaxed shadow-sm">
-                                    {msg.isImage && <span className="opacity-70 block text-[10px] mb-0.5">📎 Image attached</span>}
-                                    {msg.text || "(image only)"}
-                                </div>
-                            )}
+                            <div className="w-6 h-6 rounded-lg bg-primary-100 flex items-center justify-center shrink-0 mt-0.5">
+                                <Sparkles className="w-3.5 h-3.5 text-primary-600" />
+                            </div>
+                            <div className="bg-slate-50 border border-slate-200 rounded-xl rounded-tl-sm px-3.5 py-3 flex flex-col gap-2 min-w-[140px]">
+                                <Skeleton width="100%" height="0.6rem" />
+                                <Skeleton width="80%" height="0.6rem" />
+                                <Skeleton width="40%" height="0.6rem" />
+                            </div>
                         </motion.div>
-                    ))}
-                </AnimatePresence>
+                    )}
 
-                {/* Loading indicator */}
-                {isLoading && (
-                    <motion.div
-                        initial={{ opacity: 0, y: 6 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        className="flex items-start gap-2"
-                    >
-                        <div className="w-6 h-6 rounded-lg bg-primary-100 flex items-center justify-center shrink-0 mt-0.5">
-                            <Sparkles className="w-3.5 h-3.5 text-primary-600" />
-                        </div>
-                        <div className="bg-slate-50 border border-slate-200 rounded-xl rounded-tl-sm px-3.5 py-3 flex items-center gap-1.5">
-                            {[0, 1, 2].map(i => (
-                                <div key={i} className="w-1.5 h-1.5 bg-primary-400 rounded-full animate-bounce-subtle" style={{ animationDelay: `${i * 0.15}s` }} />
-                            ))}
-                        </div>
-                    </motion.div>
-                )}
+                    <div ref={messagesEndRef} />
+                </div>
 
-                <div ref={messagesEndRef} />
-            </div>
-
-            {/* ── Action bar (copy/export) ── */}
-            <AnimatePresence>
-                {hasTemplate && (
-                    <motion.div
-                        initial={{ opacity: 0, y: 8 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        exit={{ opacity: 0, y: 8 }}
-                        className="px-4 pt-2 pb-0 shrink-0 flex gap-2"
-                    >
-                        <Button
-                            variant="outline"
-                            size="sm"
-                            className="flex-1 text-xs"
-                            leftIcon={<FileCode className="w-3.5 h-3.5" />}
-                            onClick={onCopyMjml}
-                        >
-                            Copy MJML
-                        </Button>
-                        <Button
-                            variant="outline"
-                            size="sm"
-                            className="flex-1 text-xs"
-                            leftIcon={<FileImage className="w-3.5 h-3.5" />}
-                            onClick={onExportHtml}
-                        >
-                            Export HTML
-                        </Button>
-                    </motion.div>
-                )}
-            </AnimatePresence>
-
-            {/* ── Prompt bar ── */}
-            <div className="shrink-0 p-4">
-                {/* Image uploader (collapsible) */}
+                {/* ── Action bar (copy/export) ── */}
                 <AnimatePresence>
-                    {showImageUploader && (
+                    {hasTemplate && (
                         <motion.div
-                            initial={{ opacity: 0, height: 0 }}
-                            animate={{ opacity: 1, height: "auto" }}
-                            exit={{ opacity: 0, height: 0 }}
-                            className="mb-3 overflow-hidden"
+                            initial={{ opacity: 0, y: 8 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            exit={{ opacity: 0, y: 8 }}
+                            className="px-4 pt-2 pb-0 shrink-0 flex gap-2"
                         >
-                            <ImageUploader
-                                onImageChange={(base64, mime) => {
-                                    setImageBase64(base64);
-                                    setMimeType(mime);
-                                }}
-                            />
+                            <Button
+                                variant="outline"
+                                size="sm"
+                                className="flex-1 text-xs"
+                                leftIcon={<FileCode className="w-3.5 h-3.5" />}
+                                onClick={onCopyMjml}
+                            >
+                                Copy MJML
+                            </Button>
+                            <Button
+                                variant="outline"
+                                size="sm"
+                                className="flex-1 text-xs"
+                                leftIcon={<FileImage className="w-3.5 h-3.5" />}
+                                onClick={onExportHtml}
+                            >
+                                Export HTML
+                            </Button>
                         </motion.div>
                     )}
                 </AnimatePresence>
 
-                {/* Floating prompt input box */}
-                {onLoadSample && (
-                    <div className="mb-3">
-                        <Button
-                            variant="primary"
-                            className="w-full text-xs font-semibold py-2.5 bg-violet-50 text-violet-700 border border-violet-200 hover:bg-violet-100 shadow-sm"
-                            onClick={onLoadSample}
-                            leftIcon={<FileCode className="w-4 h-4" />}
-                        >
-                            Load Sample Template (Free)
-                        </Button>
-                    </div>
-                )}
-                <form onSubmit={handleSubmit}>
-                    <div className="prompt-glow rounded-2xl border border-slate-200 bg-white overflow-hidden transition-all" style={{ boxShadow: "0 2px 12px rgba(15,23,42,0.07), 0 8px 28px rgba(15,23,42,0.05)" }}>
-                        {/* Model indicator row */}
-                        <div className="flex items-center gap-1.5 px-3 pt-2.5 pb-1 border-b border-slate-100">
-                            <Zap className="w-3 h-3 text-violet-500 shrink-0" />
-                            <span className="text-[11px] font-semibold text-slate-500 select-none">{ACTIVE_MODEL_LABEL}</span>
-                        </div>
+                {/* ── Prompt bar ── */}
+                <div className="shrink-0 p-4">
+                    {/* Image uploader (collapsible) */}
+                    <AnimatePresence>
+                        {showImageUploader && (
+                            <motion.div
+                                initial={{ opacity: 0, height: 0 }}
+                                animate={{ opacity: 1, height: "auto" }}
+                                exit={{ opacity: 0, height: 0 }}
+                                className="mb-3 overflow-hidden"
+                            >
+                                <ImageUploader
+                                    onImageChange={(base64, mime) => {
+                                        setImageBase64(base64);
+                                        setMimeType(mime);
+                                    }}
+                                />
+                            </motion.div>
+                        )}
+                    </AnimatePresence>
 
-                        {/* Text input */}
-                        <TextArea
-                            ref={textareaRef}
-                            value={prompt}
-                            autoResize
-                            onChange={e => setPrompt(e.target.value)}
-                            placeholder="Describe the email you want to generate..."
-                            className="w-full min-h-[80px] max-h-[180px] border-none shadow-none ring-0 ring-offset-0 focus-visible:ring-0 px-3 py-2.5 text-sm resize-none bg-white outline-none placeholder:text-slate-400 text-slate-800 rounded-none"
-                            onKeyDown={e => {
-                                if (e.key === "Enter" && !e.shiftKey) {
-                                    e.preventDefault();
-                                    handleSubmit();
-                                }
-                            }}
-                            onPaste={e => {
-                                const items = e.clipboardData?.items;
-                                if (!items) return;
-                                for (let i = 0; i < items.length; i++) {
-                                    if (items[i].type.indexOf("image") !== -1) {
-                                        const file = items[i].getAsFile();
-                                        if (file) {
-                                            const reader = new FileReader();
-                                            reader.onload = (ev) => {
-                                                const result = ev.target?.result as string;
-                                                if (result) {
-                                                    const base64Data = result.split(",")[1];
-                                                    setImageBase64(base64Data);
-                                                    setMimeType(file.type);
-                                                    setShowImageUploader(true);
-                                                }
-                                            };
-                                            reader.readAsDataURL(file);
-                                            e.preventDefault();
-                                            break;
+                    {/* Load sample button */}
+                    {onLoadSample && (
+                        <div className="mb-3">
+                            <Button
+                                variant="primary"
+                                className="w-full text-xs font-semibold py-2.5 bg-violet-50 text-violet-700 border border-violet-200 hover:bg-violet-100 shadow-sm"
+                                onClick={onLoadSample}
+                                leftIcon={<FileCode className="w-4 h-4" />}
+                            >
+                                Load Sample Template (Free)
+                            </Button>
+                        </div>
+                    )}
+                    <form onSubmit={handleSubmit}>
+                        <div className="prompt-glow rounded-2xl border border-slate-200 bg-white overflow-hidden transition-all" style={{ boxShadow: "0 2px 12px rgba(15,23,42,0.07), 0 8px 28px rgba(15,23,42,0.05)" }}>
+                            {/* Model indicator row */}
+                            <div className="flex items-center gap-1.5 px-3 pt-2.5 pb-1 border-b border-slate-100">
+                                <Zap className="w-3 h-3 text-violet-500 shrink-0" />
+                                <span className="text-[11px] font-semibold text-slate-500 select-none">{ACTIVE_MODEL_LABEL}</span>
+                            </div>
+
+                            {/* Text input */}
+                            <TextArea
+                                ref={textareaRef}
+                                value={prompt}
+                                autoResize
+                                onChange={e => setPrompt(e.target.value)}
+                                placeholder="Describe the email you want to generate..."
+                                className="w-full min-h-[80px] max-h-[180px] border-none shadow-none ring-0 ring-offset-0 focus-visible:ring-0 px-3 py-2.5 text-sm resize-none bg-white outline-none placeholder:text-slate-400 text-slate-800 rounded-none"
+                                onKeyDown={e => {
+                                    if (e.key === "Enter" && !e.shiftKey) {
+                                        e.preventDefault();
+                                        handleSubmit();
+                                    }
+                                }}
+                                onPaste={e => {
+                                    const items = e.clipboardData?.items;
+                                    if (!items) return;
+                                    for (let i = 0; i < items.length; i++) {
+                                        if (items[i].type.indexOf("image") !== -1) {
+                                            const file = items[i].getAsFile();
+                                            if (file) {
+                                                const reader = new FileReader();
+                                                reader.onload = (ev) => {
+                                                    const result = ev.target?.result as string;
+                                                    if (result) {
+                                                        const base64Data = result.split(",")[1];
+                                                        setImageBase64(base64Data);
+                                                        setMimeType(file.type);
+                                                        setShowImageUploader(true);
+                                                    }
+                                                };
+                                                reader.readAsDataURL(file);
+                                                e.preventDefault();
+                                                break;
+                                            }
                                         }
                                     }
-                                }
-                            }}
-                        />
+                                }}
+                            />
 
-                        {/* Bottom bar */}
-                        <div className="flex items-center justify-between px-2.5 py-2 border-t border-slate-100">
-                            <button
-                                type="button"
-                                onClick={() => setShowImageUploader(v => !v)}
-                                className={`p-1.5 rounded-lg transition-colors ${showImageUploader || imageBase64 ? "bg-primary-100 text-primary-600" : "text-slate-400 hover:text-slate-600 hover:bg-slate-100"}`}
-                                title="Attach image reference"
-                            >
-                                {imageBase64
-                                    ? <X className="w-4 h-4" onClick={(e) => { e.stopPropagation(); setImageBase64(null); setMimeType(null); }} />
-                                    : <Paperclip className="w-4 h-4" />
-                                }
-                            </button>
+                            {/* Bottom bar */}
+                            <div className="flex items-center justify-between px-2.5 py-2 border-t border-slate-100">
+                                <button
+                                    type="button"
+                                    onClick={() => setShowImageUploader(v => !v)}
+                                    className={`p-1.5 rounded-lg transition-colors ${showImageUploader || imageBase64 ? "bg-primary-100 text-primary-600" : "text-slate-400 hover:text-slate-600 hover:bg-slate-100"}`}
+                                    title="Attach image reference"
+                                >
+                                    {imageBase64
+                                        ? <X className="w-4 h-4" onClick={(e) => { e.stopPropagation(); setImageBase64(null); setMimeType(null); }} />
+                                        : <Paperclip className="w-4 h-4" />
+                                    }
+                                </button>
 
-                            <button
-                                type="submit"
-                                disabled={!canSubmit}
-                                className="flex items-center gap-1.5 bg-primary-600 disabled:bg-slate-200 disabled:text-slate-400 text-white text-xs font-semibold px-3 py-1.5 rounded-xl hover:bg-primary-700 transition-all"
-                            >
-                                {isLoading
-                                    ? <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                                    : <><SendHorizonal className="w-3.5 h-3.5" />{hasTemplate ? "Update" : "Generate"}</>
-                                }
-                            </button>
+                                <button
+                                    type="submit"
+                                    disabled={!canSubmit}
+                                    className="flex items-center gap-1.5 bg-primary-600 disabled:bg-slate-200 disabled:text-slate-400 text-white text-xs font-semibold px-3 py-1.5 rounded-xl hover:bg-primary-700 transition-all"
+                                >
+                                    {isLoading
+                                        ? <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                                        : <><SendHorizonal className="w-3.5 h-3.5" />{hasTemplate ? "Update" : "Generate"}</>
+                                    }
+                                </button>
+                            </div>
                         </div>
-                    </div>
-                </form>
-            </div>
+                    </form>
+                </div>
+            </motion.div>
+
+            {/* ── Collapse / Expand Toggle Button ── */}
+            {onToggleCollapse && (
+                <motion.button
+                    onClick={onToggleCollapse}
+                    className="absolute -right-4 top-1/2 z-30 flex items-center justify-center w-8 h-8 rounded-full bg-white border border-slate-200 shadow-md text-slate-500 hover:text-violet-600 hover:border-violet-300 hover:shadow-violet-100 transition-all"
+                    style={{ transform: "translateY(-50%)" }}
+                    whileHover={{ scale: 1.1 }}
+                    whileTap={{ scale: 0.94 }}
+                    title={isCollapsed ? "Expand panel" : "Collapse panel"}
+                >
+                    <AnimatePresence mode="wait" initial={false}>
+                        <motion.span
+                            key={isCollapsed ? "expand" : "collapse"}
+                            initial={{ opacity: 0, rotate: -90 }}
+                            animate={{ opacity: 1, rotate: 0 }}
+                            exit={{ opacity: 0, rotate: 90 }}
+                            transition={{ duration: 0.18 }}
+                        >
+                            {isCollapsed
+                                ? <ChevronsRight className="w-4 h-4" />
+                                : <ChevronsLeft className="w-4 h-4" />
+                            }
+                        </motion.span>
+                    </AnimatePresence>
+                </motion.button>
+            )}
         </div>
     );
 }

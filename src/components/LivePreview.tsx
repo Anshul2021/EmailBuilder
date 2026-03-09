@@ -1,11 +1,13 @@
 "use client";
 
 import { useState, useRef, useCallback, useEffect } from "react";
-import { Monitor, Smartphone, MailOpen, PanelRight, AlignLeft, AlignCenter, AlignRight, Bold, Type, Copy, Download, PencilLine, Check, ImageIcon, X, Upload } from "lucide-react";
+import { Monitor, Smartphone, MailOpen, AlignLeft, AlignCenter, AlignRight, Bold, Copy, Download, PencilLine, Check, ImageIcon, X, Upload } from "lucide-react";
 import { clsx } from "clsx";
 import { Tooltip } from "./UI/Tooltip";
 import { motion, AnimatePresence } from "framer-motion";
-import { RichTextEditor } from "./UI/RichTextEditor";
+import { TextPropertiesPanel } from "./TextPropertiesPanel";
+import type { TextProperties } from "./TextPropertiesPanel";
+import { Skeleton } from "primereact/skeleton";
 
 interface LivePreviewProps {
     html: string;
@@ -14,16 +16,6 @@ interface LivePreviewProps {
     onMjmlChange?: (newMjml: string, newHtml: string) => void;
     onCopyMjml: () => void;
     onExportHtml: () => void;
-}
-
-interface TextProperties {
-    fontSize: number;
-    fontWeight: "normal" | "bold";
-    color: string;
-    align: "left" | "center" | "right";
-    fontFamily: string;
-    content: string;
-    elementTag: string;
 }
 
 const DEFAULT_PROPS: TextProperties = {
@@ -44,13 +36,23 @@ function rgbToHex(rgb: string): string {
     return "#" + [m[1], m[2], m[3]].map(n => parseInt(n).toString(16).padStart(2, "0")).join("");
 }
 
+// ── Drag-to-resize constants ────────────────────────────────────────────────
+const PANEL_MIN_WIDTH = 240;
+const PANEL_MAX_WIDTH = 520;
+const PANEL_DEFAULT_WIDTH = 320;
+
 export function LivePreview({ html, mjml, isLoading, onMjmlChange, onCopyMjml, onExportHtml }: LivePreviewProps) {
     const [viewMode, setViewMode] = useState<"desktop" | "mobile">("desktop");
     const [showEditPanel, setShowEditPanel] = useState(false);
     const [selectedProps, setSelectedProps] = useState<TextProperties>(DEFAULT_PROPS);
     const [hasSelection, setHasSelection] = useState(false);
-    const [selectionIsImage, setSelectionIsImage] = useState(false);
     const [copied, setCopied] = useState(false);
+
+    // Right-panel draggable width
+    const [panelWidth, setPanelWidth] = useState(PANEL_DEFAULT_WIDTH);
+    const isDraggingRef = useRef(false);
+    const dragStartXRef = useRef(0);
+    const dragStartWidthRef = useRef(PANEL_DEFAULT_WIDTH);
 
     // Image upload modal state
     const [imageModalOpen, setImageModalOpen] = useState(false);
@@ -58,7 +60,6 @@ export function LivePreview({ html, mjml, isLoading, onMjmlChange, onCopyMjml, o
     const imageInputRef = useRef<HTMLInputElement>(null);
 
     const iframeRef = useRef<HTMLIFrameElement>(null);
-    // Keep a ref to the currently selected DOM element inside the iframe
     const selectedElementRef = useRef<HTMLElement | null>(null);
 
     // Refs to avoid stale closures in iframe event listeners
@@ -79,7 +80,6 @@ export function LivePreview({ html, mjml, isLoading, onMjmlChange, onCopyMjml, o
         if (props.fontWeight) el.style.fontWeight = props.fontWeight;
         if (props.color) el.style.color = props.color;
         if (props.align) el.style.textAlign = props.align;
-        // Preserve font family if we captured it
         if (props.fontFamily) el.style.fontFamily = props.fontFamily;
     }, []);
 
@@ -91,7 +91,6 @@ export function LivePreview({ html, mjml, isLoading, onMjmlChange, onCopyMjml, o
         const style = doc.createElement("style");
         style.id = styleId;
         style.innerHTML = `
-            /* Interactive states */
             p, h1, h2, h3, h4, h5, h6, td, span, a {
                 cursor: pointer !important;
                 transition: outline 0.15s ease;
@@ -114,9 +113,7 @@ export function LivePreview({ html, mjml, isLoading, onMjmlChange, onCopyMjml, o
                 outline-offset: 3px;
                 border-radius: 2px;
             }
-            .ag-selected:hover {
-                outline: 2px solid #7c3aed !important;
-            }
+            .ag-selected:hover { outline: 2px solid #7c3aed !important; }
             .ag-img-selected {
                 outline: 3px solid #7c3aed !important;
                 outline-offset: 2px;
@@ -129,17 +126,13 @@ export function LivePreview({ html, mjml, isLoading, onMjmlChange, onCopyMjml, o
                 border-radius: 2px;
                 white-space: pre-wrap;
             }
-            /* Robust hidden scrollbars & smooth scroll */
             html::-webkit-scrollbar, body::-webkit-scrollbar, *::-webkit-scrollbar { 
-                display: none !important; 
-                width: 0 !important;
-                height: 0 !important;
+                display: none !important; width: 0 !important; height: 0 !important;
             }
             html, body, * {
                 scrollbar-width: none !important;
                 -ms-overflow-style: none !important;
                 scroll-behavior: smooth !important;
-                overflow: -moz-scrollbars-none !important;
             }
         `;
         doc.head.appendChild(style);
@@ -150,17 +143,14 @@ export function LivePreview({ html, mjml, isLoading, onMjmlChange, onCopyMjml, o
         const iframe = iframeRef.current;
         if (!iframe || !iframe.contentDocument) return;
 
-        // Clear any stale selection from previous template
         selectedElementRef.current = null;
         setHasSelection(false);
-        setSelectionIsImage(false);
         setSelectedProps(DEFAULT_PROPS);
 
         const doc = iframe.contentDocument;
         const win = iframe.contentWindow;
         if (!win) return;
 
-        // Inject selection & hide styles
         injectIframeStyles(doc);
 
         const EDITABLE_TAGS = ["P", "DIV", "H1", "H2", "H3", "H4", "H5", "H6", "TD", "SPAN", "A", "STRONG", "B", "I", "EM"];
@@ -168,10 +158,8 @@ export function LivePreview({ html, mjml, isLoading, onMjmlChange, onCopyMjml, o
         doc.addEventListener("click", (e) => {
             const target = e.target as HTMLElement;
 
-            // Handle image click → open upload modal
             if (target.tagName === "IMG") {
                 e.stopPropagation();
-                // Deselect text element if any
                 const prevEl = selectedElementRef.current;
                 if (prevEl) {
                     prevEl.classList.remove("ag-selected");
@@ -179,20 +167,15 @@ export function LivePreview({ html, mjml, isLoading, onMjmlChange, onCopyMjml, o
                     selectedElementRef.current = null;
                     setHasSelection(false);
                 }
-                // Highlight clicked image
                 doc.querySelectorAll(".ag-img-selected").forEach(el => el.classList.remove("ag-img-selected"));
                 target.classList.add("ag-img-selected");
                 clickedImageRef.current = target as HTMLImageElement;
-                setSelectionIsImage(true);
                 setImageModalOpen(true);
                 return;
             }
 
-            // Remove any image highlight
             doc.querySelectorAll(".ag-img-selected").forEach(el => el.classList.remove("ag-img-selected"));
-            setSelectionIsImage(false);
 
-            // Click on non-editable area → deselect current text element
             if (!EDITABLE_TAGS.includes(target.tagName)) {
                 const el = selectedElementRef.current;
                 if (el) {
@@ -207,7 +190,6 @@ export function LivePreview({ html, mjml, isLoading, onMjmlChange, onCopyMjml, o
                 return;
             }
 
-            // Deselect old element
             if (selectedElementRef.current && selectedElementRef.current !== target) {
                 selectedElementRef.current.classList.remove("ag-selected");
                 selectedElementRef.current.removeAttribute("contenteditable");
@@ -216,7 +198,6 @@ export function LivePreview({ html, mjml, isLoading, onMjmlChange, onCopyMjml, o
             selectedElementRef.current = target;
             target.classList.add("ag-selected");
 
-            // Use iframe's own window for getComputedStyle
             const cs = win.getComputedStyle(target);
             const align = cs.textAlign as "left" | "center" | "right";
 
@@ -233,17 +214,14 @@ export function LivePreview({ html, mjml, isLoading, onMjmlChange, onCopyMjml, o
             setSelectedProps(props);
             setHasSelection(true);
             setShowEditPanel(true);
-            setSelectionIsImage(false);
         });
 
-        // When user types inside an editable element, capture changes
         doc.addEventListener("input", (e) => {
             const target = e.target as HTMLElement;
             if (target.contentEditable === "true") {
                 const newContent = target.innerHTML || target.textContent || "";
                 setSelectedProps(prev => {
                     const next = { ...prev, content: newContent };
-                    // Re-apply all styles immediately to prevent font corruption
                     target.style.fontSize = `${next.fontSize}px`;
                     target.style.fontWeight = next.fontWeight;
                     target.style.color = next.color;
@@ -255,7 +233,6 @@ export function LivePreview({ html, mjml, isLoading, onMjmlChange, onCopyMjml, o
             }
         });
 
-        // Escape key to deselect
         doc.addEventListener("keydown", (e) => {
             if (e.key === "Escape") {
                 const el = selectedElementRef.current;
@@ -268,13 +245,12 @@ export function LivePreview({ html, mjml, isLoading, onMjmlChange, onCopyMjml, o
                     setSelectedProps(DEFAULT_PROPS);
                 }
                 doc.querySelectorAll(".ag-img-selected").forEach(el => el.classList.remove("ag-img-selected"));
-                setSelectionIsImage(false);
             }
         });
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [injectIframeStyles]);
 
-    // Ensure styles are re-injected when content changes
+    // Re-inject styles when html changes
     useEffect(() => {
         const doc = iframeRef.current?.contentDocument;
         if (doc) injectIframeStyles(doc);
@@ -291,23 +267,20 @@ export function LivePreview({ html, mjml, isLoading, onMjmlChange, onCopyMjml, o
                 if (prop.color !== undefined) el.style.color = next.color;
                 if (prop.align !== undefined) {
                     el.style.textAlign = next.align;
-                    if (el.hasAttribute('align')) el.setAttribute('align', next.align);
-
-                    // If element is inline, also align its block parent
+                    if (el.hasAttribute("align")) el.setAttribute("align", next.align);
                     const display = el.ownerDocument.defaultView?.getComputedStyle(el).display;
-                    if (display === 'inline' || display === 'inline-block') {
+                    if (display === "inline" || display === "inline-block") {
                         let parent = el.parentElement;
-                        while (parent && parent.tagName !== 'BODY') {
+                        while (parent && parent.tagName !== "BODY") {
                             if (["P", "DIV", "H1", "H2", "H3", "H4", "H5", "H6", "TD"].includes(parent.tagName)) {
                                 parent.style.textAlign = next.align;
-                                if (parent.hasAttribute('align')) parent.setAttribute('align', next.align);
+                                if (parent.hasAttribute("align")) parent.setAttribute("align", next.align);
                                 break;
                             }
                             parent = parent.parentElement;
                         }
                     }
                 }
-                // Never reset fontFamily — only apply if we're explicitly setting it
             }
             propagateChanges();
             return next;
@@ -320,7 +293,6 @@ export function LivePreview({ html, mjml, isLoading, onMjmlChange, onCopyMjml, o
         if (!el) return;
         el.setAttribute("contenteditable", "true");
         el.focus();
-        // Move cursor to end
         const range = el.ownerDocument!.createRange();
         range.selectNodeContents(el);
         range.collapse(false);
@@ -329,16 +301,14 @@ export function LivePreview({ html, mjml, isLoading, onMjmlChange, onCopyMjml, o
         sel?.addRange(range);
     };
 
-    // Handle text content change from the sidebar textarea
+    // Handle text content change from the sidebar
     const handleContentChange = useCallback((newContent: string | null) => {
         const contentStr = newContent || "";
         setSelectedProps(prev => {
             const next = { ...prev, content: contentStr };
             const el = selectedElementRef.current;
             if (el) {
-                // Set HTML content safely
                 el.innerHTML = contentStr;
-                // Immediately re-apply all styles since innerHTML assignment resets inline elements
                 reapplyStyles(el, next);
                 propagateChanges();
             }
@@ -356,18 +326,14 @@ export function LivePreview({ html, mjml, isLoading, onMjmlChange, onCopyMjml, o
             const dataUrl = ev.target?.result as string;
             if (dataUrl && clickedImageRef.current) {
                 clickedImageRef.current.src = dataUrl;
-                // Remove selection highlight
                 const doc = iframeRef.current?.contentDocument;
-                if (doc) {
-                    doc.querySelectorAll(".ag-img-selected").forEach(el => el.classList.remove("ag-img-selected"));
-                }
+                if (doc) doc.querySelectorAll(".ag-img-selected").forEach(el => el.classList.remove("ag-img-selected"));
                 propagateChanges();
             }
         };
         reader.readAsDataURL(file);
         setImageModalOpen(false);
         clickedImageRef.current = null;
-        // Reset input so same file can be re-selected
         if (imageInputRef.current) imageInputRef.current.value = "";
     };
 
@@ -377,7 +343,34 @@ export function LivePreview({ html, mjml, isLoading, onMjmlChange, onCopyMjml, o
         setTimeout(() => setCopied(false), 2000);
     };
 
+    // ── Drag-to-resize logic ─────────────────────────────────────────────────
+    const handleDragStart = useCallback((e: React.MouseEvent) => {
+        e.preventDefault();
+        isDraggingRef.current = true;
+        dragStartXRef.current = e.clientX;
+        dragStartWidthRef.current = panelWidth;
+
+        const onMouseMove = (me: MouseEvent) => {
+            if (!isDraggingRef.current) return;
+            const delta = dragStartXRef.current - me.clientX; // drag left → increase width
+            const newW = Math.min(PANEL_MAX_WIDTH, Math.max(PANEL_MIN_WIDTH, dragStartWidthRef.current + delta));
+            setPanelWidth(newW);
+        };
+
+        const onMouseUp = () => {
+            isDraggingRef.current = false;
+            document.removeEventListener("mousemove", onMouseMove);
+            document.removeEventListener("mouseup", onMouseUp);
+        };
+
+        document.addEventListener("mousemove", onMouseMove);
+        document.addEventListener("mouseup", onMouseUp);
+    }, [panelWidth]);
+
+    // Toolbar alignment icons map
     const ALIGN_ICONS = { left: AlignLeft, center: AlignCenter, right: AlignRight };
+    // Suppress lint on unused ALIGN_ICONS within the panel (kept for potential future use)
+    void ALIGN_ICONS; void Bold;
 
     return (
         <div className="flex flex-col h-full w-full bg-[#f5f7fa]">
@@ -452,15 +445,41 @@ export function LivePreview({ html, mjml, isLoading, onMjmlChange, onCopyMjml, o
 
                     {/* Loading overlay */}
                     {isLoading && (
-                        <div className="absolute inset-0 z-10 flex flex-col items-center justify-center bg-[#f5f7fa]/90 backdrop-blur-sm animate-fade-in">
-                            <div className="bg-white rounded-2xl shadow-xl px-8 py-6 flex flex-col items-center gap-3">
-                                <div className="flex items-center gap-1.5">
-                                    {[0, 1, 2].map(i => (
-                                        <div key={i} className="w-2.5 h-2.5 bg-violet-600 rounded-full animate-bounce" style={{ animationDelay: `${i * 0.15}s` }} />
-                                    ))}
+                        <div className="absolute inset-x-6 top-6 bottom-6 z-10 flex flex-col items-center justify-center bg-white/80 backdrop-blur-[2px] animate-fade-in rounded-xl overflow-hidden border border-slate-200/50">
+                            <div className="w-full max-w-md bg-white p-8 flex flex-col gap-6 scale-95 opacity-80 pointer-events-none">
+                                {/* Mock Header */}
+                                <div className="flex items-center justify-between">
+                                    <Skeleton width="5rem" height="1.5rem" />
+                                    <div className="flex gap-2">
+                                        <Skeleton width="2rem" height="0.5rem" />
+                                        <Skeleton width="2rem" height="0.5rem" />
+                                    </div>
                                 </div>
-                                <p className="text-sm font-semibold text-slate-600">Generating Template...</p>
-                                <p className="text-xs text-slate-400">Gemini is crafting your email</p>
+
+                                {/* Mock Hero */}
+                                <Skeleton width="100%" height="160px" borderRadius="12px" />
+
+                                {/* Mock Text Content */}
+                                <div className="space-y-3">
+                                    <Skeleton width="100%" height="0.8rem" />
+                                    <Skeleton width="90%" height="0.8rem" />
+                                    <Skeleton width="95%" height="0.8rem" />
+                                    <Skeleton width="40%" height="0.8rem" />
+                                </div>
+
+                                {/* Mock CTA */}
+                                <div className="flex justify-center pt-2">
+                                    <Skeleton width="8rem" height="2.5rem" borderRadius="8px" />
+                                </div>
+
+                                {/* Status message */}
+                                <div className="flex flex-col items-center gap-1.5 pt-4">
+                                    <div className="flex items-center gap-1">
+                                        <div className="w-1.5 h-1.5 bg-violet-600 rounded-full animate-pulse" />
+                                        <p className="text-sm font-bold text-slate-800 tracking-tight">Gemini is crafting your email</p>
+                                    </div>
+                                    <p className="text-[11px] text-slate-400 font-medium">Generating MJML & optimized HTML...</p>
+                                </div>
                             </div>
                         </div>
                     )}
@@ -496,164 +515,40 @@ export function LivePreview({ html, mjml, isLoading, onMjmlChange, onCopyMjml, o
                     </div>
                 </div>
 
-                {/* ── Text Properties Panel ── */}
+                {/* ── Properties Panel (draggable width) ── */}
                 <AnimatePresence>
                     {showEditPanel && html && (
                         <motion.div
                             initial={{ width: 0, opacity: 0 }}
-                            animate={{ width: 340, opacity: 1 }}
+                            animate={{ width: panelWidth, opacity: 1 }}
                             exit={{ width: 0, opacity: 0 }}
                             transition={{ duration: 0.22, ease: "easeOut" }}
-                            className="shrink-0 overflow-hidden border-l border-slate-200 bg-white h-full"
+                            className="shrink-0 relative border-l border-slate-200 bg-white h-full overflow-hidden"
+                            style={{ width: panelWidth }}
                         >
-                            <div className="w-[340px] h-full flex flex-col">
-                                <div className="p-4 border-b border-slate-100">
-                                    <div className="flex items-center gap-2">
-                                        <PanelRight className="w-4 h-4 text-violet-500" />
-                                        <h3 className="text-sm font-bold text-slate-800">Properties</h3>
-                                    </div>
-                                    <p className="text-xs text-slate-400 mt-0.5">Click text or images in the preview</p>
-                                </div>
+                            {/* ── Drag Handle ── */}
+                            <div
+                                onMouseDown={handleDragStart}
+                                className="absolute left-0 top-0 bottom-0 w-1.5 cursor-col-resize z-20 group flex items-center justify-center hover:bg-violet-100 transition-colors"
+                                title="Drag to resize"
+                            >
+                                <div className="w-0.5 h-8 bg-slate-300 group-hover:bg-violet-400 rounded-full transition-colors" />
+                            </div>
 
-                                {!hasSelection ? (
-                                    <div className="flex-1 flex flex-col items-center justify-center gap-4 p-6 text-center">
-                                        <div className="w-12 h-12 rounded-xl bg-slate-100 flex items-center justify-center">
-                                            <Type className="w-5 h-5 text-slate-400" />
-                                        </div>
-                                        <div>
-                                            <p className="text-xs font-semibold text-slate-600 mb-1">Nothing selected</p>
-                                            <p className="text-[11px] text-slate-400 leading-relaxed">Click any text to edit its style, or click an image to replace it</p>
-                                        </div>
-                                        <div className="flex flex-col gap-2 w-full mt-2">
-                                            <div className="flex items-center gap-2 bg-slate-50 rounded-lg px-3 py-2 border border-slate-100">
-                                                <Type className="w-3.5 h-3.5 text-violet-400 shrink-0" />
-                                                <span className="text-[11px] text-slate-500">Click text → edit font, size & color</span>
-                                            </div>
-                                            <div className="flex items-center gap-2 bg-slate-50 rounded-lg px-3 py-2 border border-slate-100">
-                                                <ImageIcon className="w-3.5 h-3.5 text-violet-400 shrink-0" />
-                                                <span className="text-[11px] text-slate-500">Click image → replace with yours</span>
-                                            </div>
-                                        </div>
-                                    </div>
-                                ) : (
-                                    <div className="flex-1 overflow-y-auto p-4 space-y-5">
-
-                                        {/* Element info */}
-                                        <div className="flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2">
-                                            <Type className="w-3.5 h-3.5 text-violet-500 shrink-0" />
-                                            <span className="text-xs font-mono text-slate-600">&lt;{selectedProps.elementTag}&gt;</span>
-                                        </div>
-
-                                        {/* Text Content editing */}
-                                        <div>
-                                            <div className="flex items-center justify-between mb-1.5">
-                                                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Content</label>
-                                                <button
-                                                    onClick={enableTextEdit}
-                                                    className="flex items-center gap-1 text-[10px] font-semibold text-violet-600 hover:text-violet-700 px-1.5 py-0.5 bg-violet-50 rounded"
-                                                >
-                                                    <PencilLine className="w-3 h-3" />
-                                                    Edit inline
-                                                </button>
-                                            </div>
-                                            <RichTextEditor
-                                                value={selectedProps.content}
-                                                onChange={handleContentChange}
-                                                placeholder="Write your email copy here..."
-                                            />
-                                        </div>
-
-                                        {/* Hidden Legacy Controls: PrimeReact Editor provides these natively */}
-                                        {false && (
-                                            <>
-                                                {/* Font Size */}
-                                                <div>
-                                                    <div className="flex items-center justify-between mb-1.5">
-                                                        <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Font Size</label>
-                                                        <span className="text-xs font-bold text-violet-600">{selectedProps.fontSize}px</span>
-                                                    </div>
-                                                    <input
-                                                        type="range" min={8} max={72} step={1}
-                                                        value={selectedProps.fontSize}
-                                                        onChange={e => applyStyle({ fontSize: Number(e.target.value) })}
-                                                        className="w-full accent-violet-600"
-                                                    />
-                                                    <div className="flex justify-between text-[10px] text-slate-300 mt-0.5">
-                                                        <span>8px</span><span>72px</span>
-                                                    </div>
-                                                </div>
-
-                                                {/* Font Weight */}
-                                                <div>
-                                                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block mb-1.5">Weight</label>
-                                                    <div className="flex gap-2">
-                                                        {(["normal", "bold"] as const).map(w => (
-                                                            <button
-                                                                key={w}
-                                                                onClick={() => applyStyle({ fontWeight: w })}
-                                                                className={clsx(
-                                                                    "flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-xs transition-all",
-                                                                    selectedProps.fontWeight === w
-                                                                        ? "bg-violet-600 text-white shadow-sm"
-                                                                        : "bg-slate-100 text-slate-600 hover:bg-slate-200"
-                                                                )}
-                                                            >
-                                                                <Bold className="w-3.5 h-3.5" />
-                                                                {w === "bold" ? "Bold" : "Regular"}
-                                                            </button>
-                                                        ))}
-                                                    </div>
-                                                </div>
-
-                                                {/* Alignment */}
-                                                <div>
-                                                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block mb-1.5">Alignment</label>
-                                                    <div className="flex gap-1.5">
-                                                        {(["left", "center", "right"] as const).map(align => {
-                                                            const Icon = ALIGN_ICONS[align];
-                                                            return (
-                                                                <button
-                                                                    key={align}
-                                                                    onClick={() => applyStyle({ align })}
-                                                                    className={clsx(
-                                                                        "flex-1 flex items-center justify-center py-2 rounded-lg transition-all",
-                                                                        selectedProps.align === align
-                                                                            ? "bg-violet-600 text-white shadow-sm"
-                                                                            : "bg-slate-100 text-slate-600 hover:bg-slate-200"
-                                                                    )}
-                                                                >
-                                                                    <Icon className="w-3.5 h-3.5" />
-                                                                </button>
-                                                            );
-                                                        })}
-                                                    </div>
-                                                </div>
-                                            </>
-                                        )}
-
-                                        {/* Text Color */}
-                                        <div>
-                                            <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block mb-1.5">Color</label>
-                                            <div className="flex items-center gap-2.5 bg-slate-50 border border-slate-200 rounded-lg p-2">
-                                                <div className="w-8 h-8 rounded-lg border border-slate-300 overflow-hidden shrink-0">
-                                                    <input
-                                                        type="color"
-                                                        value={selectedProps.color}
-                                                        onChange={e => applyStyle({ color: e.target.value })}
-                                                        className="w-12 h-12 -m-2 cursor-pointer border-0 p-0"
-                                                    />
-                                                </div>
-                                                <span className="text-xs font-mono text-slate-600">{selectedProps.color}</span>
-                                            </div>
-                                        </div>
-
-                                    </div>
-                                )}
+                            {/* Panel content (offset by drag handle) */}
+                            <div className="pl-1.5 h-full" style={{ width: panelWidth }}>
+                                <TextPropertiesPanel
+                                    hasSelection={hasSelection}
+                                    selectedProps={selectedProps}
+                                    onContentChange={handleContentChange}
+                                    onApplyStyle={applyStyle}
+                                    onEnableTextEdit={enableTextEdit}
+                                    onClose={() => setShowEditPanel(false)}
+                                />
                             </div>
                         </motion.div>
                     )}
                 </AnimatePresence>
-
             </div>
 
             {/* ── Image Upload Modal ── */}
@@ -667,7 +562,6 @@ export function LivePreview({ html, mjml, isLoading, onMjmlChange, onCopyMjml, o
                         onClick={(e) => {
                             if (e.target === e.currentTarget) {
                                 setImageModalOpen(false);
-                                // Remove image highlight
                                 const doc = iframeRef.current?.contentDocument;
                                 if (doc) doc.querySelectorAll(".ag-img-selected").forEach(el => el.classList.remove("ag-img-selected"));
                             }
@@ -705,7 +599,6 @@ export function LivePreview({ html, mjml, isLoading, onMjmlChange, onCopyMjml, o
 
                             {/* Modal body */}
                             <div className="p-5">
-                                {/* Drop zone / file input */}
                                 <label
                                     htmlFor="image-replace-input"
                                     className="flex flex-col items-center justify-center gap-3 border-2 border-dashed border-violet-200 hover:border-violet-400 bg-violet-50/50 hover:bg-violet-50 rounded-xl p-8 cursor-pointer transition-all group"

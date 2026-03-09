@@ -6,6 +6,7 @@ import { LivePreview } from "@/components/LivePreview";
 import { useCredits } from "@/hooks/useCredits";
 import { X, AlertCircle } from "lucide-react";
 import { SAMPLE_TEMPLATE } from "@/lib/sampleTemplate";
+import { motion } from "framer-motion";
 
 interface Message {
   role: "user" | "model";
@@ -19,6 +20,7 @@ export default function Home() {
   const [loading, setLoading] = useState(false);
   const [messages, setMessages] = useState<Message[]>([]);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [isPromptCollapsed, setIsPromptCollapsed] = useState(false);
   const { credits, totalCredits, percentage, deductCredits } = useCredits();
 
   // Ref to track live-edited HTML from the preview editor (avoids iframe reload)
@@ -43,7 +45,6 @@ export default function Home() {
       const data = await resp.json();
 
       if (data.error) {
-        // Use the specific error message from the API
         throw new Error(data.error);
       }
 
@@ -75,7 +76,6 @@ export default function Home() {
     setErrorMsg(null);
   };
 
-  // Store edited HTML in ref (not state) to prevent iframe reload on every edit
   const handleMjmlChange = useCallback((_newMjml: string, newHtml: string) => {
     editedHtmlRef.current = newHtml;
   }, []);
@@ -104,8 +104,17 @@ export default function Home() {
 
   return (
     <main className="flex h-screen w-full overflow-hidden bg-[#f5f7fa]">
-      {/* Left Panel - Prompt Sidebar */}
-      <div className="w-[340px] lg:w-[380px] shrink-0 h-full shadow-panel">
+      {/* Left Panel - Prompt Sidebar (collapsible) */}
+      <motion.div
+        initial={false}
+        animate={{
+          width: isPromptCollapsed ? 0 : undefined,
+          minWidth: isPromptCollapsed ? 0 : undefined,
+        }}
+        transition={{ duration: 0.28, ease: [0.4, 0, 0.2, 1] }}
+        className="relative shrink-0 h-full shadow-panel overflow-visible"
+        style={{ width: isPromptCollapsed ? 0 : "clamp(320px, 22vw, 380px)" }}
+      >
         <PromptEditor
           onGenerate={handleGenerate}
           isLoading={loading}
@@ -117,8 +126,10 @@ export default function Home() {
           percentage={percentage}
           messages={messages}
           onLoadSample={handleLoadSample}
+          isCollapsed={isPromptCollapsed}
+          onToggleCollapse={() => setIsPromptCollapsed(v => !v)}
         />
-      </div>
+      </motion.div>
 
       {/* Right Panel - Preview */}
       <div className="flex-1 h-full min-w-0 relative">

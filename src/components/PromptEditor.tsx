@@ -24,6 +24,7 @@ interface PromptEditorProps {
     totalCredits: number;
     percentage: number;
     messages: Message[];
+    onLoadSample?: () => void;
 }
 
 const STARTER_PROMPTS = [
@@ -38,6 +39,7 @@ const STARTER_PROMPTS = [
 const MODELS = [
     { label: "Gemini 2.5 Flash", value: "gemini-2.5-flash" },
     { label: "Gemini 2.0 Flash", value: "gemini-2.0-flash" },
+    { label: "Gemini 2.0 Flash Lite", value: "gemini-2.0-flash-lite" },
     { label: "Gemini 1.5 Pro", value: "gemini-1.5-pro" },
     { label: "Gemini 1.5 Flash", value: "gemini-1.5-flash" },
 ];
@@ -52,6 +54,7 @@ export function PromptEditor({
     totalCredits,
     percentage,
     messages,
+    onLoadSample,
 }: PromptEditorProps) {
     const [prompt, setPrompt] = useState("");
     const [imageBase64, setImageBase64] = useState<string | null>(null);
@@ -251,6 +254,18 @@ export function PromptEditor({
                 </AnimatePresence>
 
                 {/* Floating prompt input box */}
+                {onLoadSample && (
+                    <div className="mb-3">
+                        <Button
+                            variant="primary"
+                            className="w-full text-xs font-semibold py-2.5 bg-violet-50 text-violet-700 border border-violet-200 hover:bg-violet-100 shadow-sm"
+                            onClick={onLoadSample}
+                            leftIcon={<FileCode className="w-4 h-4" />}
+                        >
+                            Load Sample Template (Free)
+                        </Button>
+                    </div>
+                )}
                 <form onSubmit={handleSubmit}>
                     <div className="prompt-glow rounded-2xl border border-slate-200 bg-white overflow-hidden transition-all" style={{ boxShadow: "0 2px 12px rgba(15,23,42,0.07), 0 8px 28px rgba(15,23,42,0.05)" }}>
                         {/* Model selector row */}

@@ -6,6 +6,15 @@ export const maxDuration = 60;
 
 const ai = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "");
 
+// Map user-facing model names to exact Google API model IDs
+const MODEL_ID_MAP: Record<string, string> = {
+    "gemini-2.5-flash": "gemini-2.5-flash-preview-04-17",
+    "gemini-2.0-flash": "gemini-2.0-flash",
+    "gemini-2.0-flash-lite": "gemini-2.0-flash-lite",
+    "gemini-1.5-pro": "gemini-1.5-pro",
+    "gemini-1.5-flash": "gemini-1.5-flash",
+};
+
 const SYSTEM_PROMPT = `
 You are an expert MJML email template developer. 
 Your task is to generate valid MJML code based on the user's prompt.
@@ -23,59 +32,79 @@ export async function POST(req: NextRequest) {
     try {
         const body = await req.json();
         const { prompt, imageBase64, mimeType, history = [], model: requestedModel } = body;
-        const modelName: string = requestedModel || "gemini-2.5-flash";
+
+        // Resolve the exact API model ID, fallback to passed value
+        const resolvedModel = MODEL_ID_MAP[requestedModel] || requestedModel || "gemini-2.5-flash-preview-04-17";
 
         if (!prompt && !imageBase64) {
             return NextResponse.json({ error: "Prompt or an image is required" }, { status: 400 });
         }
 
         if (!process.env.GEMINI_API_KEY) {
-            return NextResponse.json({ error: "GEMINI_API_KEY is not set" }, { status: 500 });
+            return NextResponse.json({ error: "GEMINI_API_KEY is not configured on the server." }, { status: 500 });
         }
 
-        console.log(`[API] Generating with model: ${modelName}`);
+        console.log(`[API] Model: ${resolvedModel} (requested: ${requestedModel})`);
 
         let mjmlCode = "";
         try {
             const model = ai.getGenerativeModel({
-                model: modelName,
+                model: resolvedModel,
                 systemInstruction: SYSTEM_PROMPT
             });
 
             const parts: Part[] = [];
             if (prompt) parts.push({ text: prompt });
             if (imageBase64 && mimeType) {
-                parts.push({
-                    inlineData: {
-                        data: imageBase64,
-                        mimeType: mimeType
-                    }
-                });
+                parts.push({ inlineData: { data: imageBase64, mimeType } });
             }
 
             const currentMessage: Content = { role: "user", parts };
             const formattedHistory: Content[] = Array.isArray(history) ? history.map((msg: any) => ({
-                role: msg.role === 'model' ? 'model' : 'user',
+                role: msg.role === "model" ? "model" : "user",
                 parts: Array.isArray(msg.parts) ? msg.parts.map((p: any) => ({ text: p.text || "" })) : []
             })) : [];
 
             const result = await model.generateContent({ contents: [...formattedHistory, currentMessage] });
             mjmlCode = result.response.text() || "";
-            console.log("[API] Gemini response received, length:", mjmlCode.length);
+            console.log("[API] Gemini OK, response length:", mjmlCode.length);
+
         } catch (genError: any) {
-            console.error("[API] Gemini error:", genError.message);
-            return NextResponse.json({
-                error: "Gemini Generation Failed",
-                details: genError.message
-            }, { status: 500 });
+            console.error("[API] Gemini error:", genError);
+
+            const errMsg: string = genError?.message || String(genError);
+            const status: number = genError?.status || 500;
+
+            // Provide accurate, actionable error messages
+            if (status === 429 || errMsg.includes("429") || errMsg.toLowerCase().includes("quota")) {
+                return NextResponse.json({
+                    error: `Daily quota reached for ${requestedModel}. Switch to another model in the model selector.`,
+                    code: "QUOTA_EXCEEDED"
+                }, { status: 429 });
+            }
+
+            if (status === 404 || errMsg.includes("404") || errMsg.toLowerCase().includes("not found")) {
+                return NextResponse.json({
+                    error: `Model "${requestedModel}" is not available with your API key. Try Gemini 1.5 Flash or 1.5 Pro.`,
+                    code: "MODEL_NOT_FOUND"
+                }, { status: 404 });
+            }
+
+            if (status === 400 || errMsg.includes("400")) {
+                return NextResponse.json({
+                    error: `Bad request to Gemini API: ${errMsg}`,
+                    code: "BAD_REQUEST"
+                }, { status: 400 });
+            }
+
+            return NextResponse.json({ error: errMsg, code: "GENERATION_FAILED" }, { status: 500 });
         }
 
-        // Clean MJML  
-        mjmlCode = mjmlCode.replace(/```(mjml|html)?\n?/g, '').replace(/```$/m, '').trim();
+        // Clean MJML of any markdown fences
+        mjmlCode = mjmlCode.replace(/```(mjml|html)?\n?/g, "").replace(/```$/m, "").trim();
 
-        // Compile MJML → HTML (mjml is now excluded from bundling via next.config.mjs)
+        // Compile MJML → HTML (mjml is excluded from RSC bundling via next.config.mjs)
         try {
-            console.log("[API] Compiling MJML...");
             const mjml2html = require("mjml");
             const mjmlFunc = typeof mjml2html === "function" ? mjml2html : mjml2html.default;
 
@@ -85,22 +114,18 @@ export async function POST(req: NextRequest) {
             });
 
             if (errors?.length > 0) console.warn("[API] MJML warnings:", errors.length);
-            console.log("[API] Compilation successful!");
-
             return NextResponse.json({ mjml: mjmlCode, html });
+
         } catch (compileError: any) {
             console.error("[API] MJML compile error:", compileError.message);
             return NextResponse.json({
-                error: "Failed to compile MJML",
+                error: "Failed to compile MJML to HTML",
                 details: compileError.message
             }, { status: 500 });
         }
 
     } catch (error: any) {
         console.error("[API] Critical error:", error.message);
-        return NextResponse.json({
-            error: "Internal Server Error",
-            details: error.message
-        }, { status: 500 });
+        return NextResponse.json({ error: error.message }, { status: 500 });
     }
 }

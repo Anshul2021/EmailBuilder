@@ -15,6 +15,7 @@ interface LivePreviewProps {
     html: string;
     mjml: string;
     isLoading: boolean;
+    loadingType?: "generating" | "saving";
     onMjmlChange?: (newMjml: string, newHtml: string) => void;
     onCopyMjml: () => void;
     onExportHtml: () => void;
@@ -48,7 +49,7 @@ const PANEL_MIN_WIDTH = 240;
 const PANEL_MAX_WIDTH = 520;
 const PANEL_DEFAULT_WIDTH = 340;
 
-export function LivePreview({ html, mjml, isLoading, onMjmlChange, onCopyMjml, onExportHtml, onSaveTemplate, onOpenHistory }: LivePreviewProps) {
+export function LivePreview({ html, mjml, isLoading, loadingType = "generating", onMjmlChange, onCopyMjml, onExportHtml, onSaveTemplate, onOpenHistory }: LivePreviewProps) {
     const [viewMode, setViewMode] = useState<"desktop" | "mobile">("desktop");
     const [showEditPanel, setShowEditPanel] = useState(false);
     const [selectedProps, setSelectedProps] = useState<ElementProperties>(DEFAULT_PROPS);
@@ -851,9 +852,16 @@ const deleteHandle = doc.getElementById("ag-delete-handle");
                                 </div>
                                 <div className="flex flex-col items-center gap-1.5 pt-4">
                                     <div className="flex items-center gap-1">
-                                        <div className="w-1.5 h-1.5 bg-violet-600 rounded-full animate-pulse" />
-                                        <p className="text-sm font-bold text-slate-800 tracking-tight">Gemini is crafting your email</p>
+                                        <div className={clsx("w-1.5 h-1.5 rounded-full animate-pulse", loadingType === "saving" ? "bg-emerald-500" : "bg-violet-600")} />
+                                        <p className="text-sm font-bold text-slate-800 tracking-tight">
+                                            {loadingType === "saving" ? "Saving to Supabase..." : "Gemini is crafting your email"}
+                                        </p>
                                     </div>
+                                    {loadingType === "saving" && (
+                                        <p className="text-[10px] text-slate-400 font-medium uppercase tracking-wider">
+                                            No AI credits are used for saving
+                                        </p>
+                                    )}
                                 </div>
                             </div>
                         </div>

@@ -21,6 +21,7 @@ export default function Home() {
   const [htmlContent, setHtmlContent] = useState<string>("");
   const [mjml, setMjml] = useState<string>("");
   const [loading, setLoading] = useState(false);
+  const [loadingType, setLoadingType] = useState<"generating" | "saving">("generating");
   const [messages, setMessages] = useState<Message[]>([]);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [isPromptCollapsed, setIsPromptCollapsed] = useState(false);
@@ -36,6 +37,7 @@ export default function Home() {
     mimeType: string | null = null,
     model: string = "gemini-2.5-flash"
   ) => {
+    setLoadingType("generating");
     setLoading(true);
     setErrorMsg(null);
     editedHtmlRef.current = "";
@@ -116,6 +118,7 @@ export default function Home() {
     const title = prompt("Enter a name for this template:", "New Template");
     if (title === null) return; // cancelled
 
+    setLoadingType("saving");
     setLoading(true);
     try {
       await saveTemplate(title, mjml, content);
@@ -182,6 +185,7 @@ export default function Home() {
           html={htmlContent}
           mjml={mjml}
           isLoading={loading}
+          loadingType={loadingType}
           onMjmlChange={handleMjmlChange}
           onCopyMjml={handleCopyMjml}
           onExportHtml={handleExportHtml}

@@ -5,8 +5,8 @@ import { Monitor, Smartphone, MailOpen, AlignLeft, AlignCenter, AlignRight, Bold
 import { clsx } from "clsx";
 import { Tooltip } from "./UI/Tooltip";
 import { motion, AnimatePresence } from "framer-motion";
-import { TextPropertiesPanel } from "./TextPropertiesPanel";
-import type { TextProperties } from "./TextPropertiesPanel";
+import { PropertiesPanel } from "./PropertiesPanel";
+import type { ElementProperties } from "./PropertiesPanel";
 import { Skeleton } from "primereact/skeleton";
 
 interface LivePreviewProps {
@@ -18,7 +18,7 @@ interface LivePreviewProps {
     onExportHtml: () => void;
 }
 
-const DEFAULT_PROPS: TextProperties = {
+const DEFAULT_PROPS: ElementProperties = {
     fontSize: 16,
     fontWeight: "normal",
     color: "#1e293b",
@@ -26,6 +26,9 @@ const DEFAULT_PROPS: TextProperties = {
     fontFamily: "",
     content: "",
     elementTag: "",
+    isImage: false,
+    width: 100,
+    borderRadius: 0,
 };
 
 function rgbToHex(rgb: string): string {
@@ -39,12 +42,12 @@ function rgbToHex(rgb: string): string {
 // ── Drag-to-resize constants ────────────────────────────────────────────────
 const PANEL_MIN_WIDTH = 240;
 const PANEL_MAX_WIDTH = 520;
-const PANEL_DEFAULT_WIDTH = 320;
+const PANEL_DEFAULT_WIDTH = 340;
 
 export function LivePreview({ html, mjml, isLoading, onMjmlChange, onCopyMjml, onExportHtml }: LivePreviewProps) {
     const [viewMode, setViewMode] = useState<"desktop" | "mobile">("desktop");
     const [showEditPanel, setShowEditPanel] = useState(false);
-    const [selectedProps, setSelectedProps] = useState<TextProperties>(DEFAULT_PROPS);
+    const [selectedProps, setSelectedProps] = useState<ElementProperties>(DEFAULT_PROPS);
     const [hasSelection, setHasSelection] = useState(false);
     const [copied, setCopied] = useState(false);
 
@@ -54,13 +57,24 @@ export function LivePreview({ html, mjml, isLoading, onMjmlChange, onCopyMjml, o
     const dragStartXRef = useRef(0);
     const dragStartWidthRef = useRef(PANEL_DEFAULT_WIDTH);
 
-    // Image upload modal state
-    const [imageModalOpen, setImageModalOpen] = useState(false);
     const clickedImageRef = useRef<HTMLImageElement | null>(null);
     const imageInputRef = useRef<HTMLInputElement>(null);
 
     const iframeRef = useRef<HTMLIFrameElement>(null);
     const selectedElementRef = useRef<HTMLElement | null>(null);
+
+    // Resizing state
+    const isResizingRef = useRef(false);
+    const resizeStartXRef = useRef(0);
+    const resizeStartWidthRef = useRef(0);
+    const resizeTargetRef = useRef<HTMLImageElement | null>(null);
+
+    // Dragging state inside iframe (Block Reordering)
+    const isBlockDraggingRef = useRef(false);
+    const dragTargetRef = useRef<HTMLElement | null>(null);
+    const ghostElementRef = useRef<HTMLElement | null>(null);
+    const dropTargetRef = useRef<HTMLElement | null>(null);
+    const dropPositionRef = useRef<"before" | "after">("before");
 
     // Refs to avoid stale closures in iframe event listeners
     const onMjmlChangeRef = useRef(onMjmlChange);
@@ -74,68 +88,185 @@ export function LivePreview({ html, mjml, isLoading, onMjmlChange, onCopyMjml, o
         if (doc) onMjmlChangeRef.current?.(mjmlRef.current, doc.documentElement.outerHTML);
     }, []);
 
-    // Re-apply all current style properties to the element (prevents style loss after content edits)
-    const reapplyStyles = useCallback((el: HTMLElement, props: TextProperties) => {
-        if (props.fontSize) el.style.fontSize = `${props.fontSize}px`;
-        if (props.fontWeight) el.style.fontWeight = props.fontWeight;
-        if (props.color) el.style.color = props.color;
-        if (props.align) el.style.textAlign = props.align;
-        if (props.fontFamily) el.style.fontFamily = props.fontFamily;
+    // Re-apply all current style properties to the element
+    const reapplyStyles = useCallback((el: HTMLElement, props: ElementProperties) => {
+        if (props.isImage) {
+            const img = el as HTMLImageElement;
+            if (props.width !== undefined) {
+                img.style.width = `${props.width}%`;
+                img.setAttribute("width", `${props.width}%`);
+            }
+            if (props.borderRadius !== undefined) img.style.borderRadius = `${props.borderRadius}px`;
+        } else {
+            if (props.fontSize) el.style.fontSize = `${props.fontSize}px`;
+            if (props.fontWeight) el.style.fontWeight = props.fontWeight;
+            if (props.color) el.style.color = props.color;
+            if (props.align) el.style.textAlign = props.align;
+            if (props.fontFamily) el.style.fontFamily = props.fontFamily;
+        }
     }, []);
 
-    // Helper to inject styles into the iframe
+    // Helper to inject styles and handle elements into the iframe
     const injectIframeStyles = useCallback((doc: Document) => {
         const styleId = "ag-preview-styles";
-        if (doc.getElementById(styleId)) return;
+        if (!doc.getElementById(styleId)) {
+            const style = doc.createElement("style");
+            style.id = styleId;
+            style.innerHTML = `
+                p, h1, h2, h3, h4, h5, h6, td, span, a {
+                    cursor: pointer !important;
+                    transition: outline 0.15s ease;
+                }
+                img {
+                    cursor: pointer !important;
+                    transition: outline 0.15s ease, filter 0.15s ease;
+                    display: inline-block;
+                }
+                p:hover, h1:hover, h2:hover, h3:hover, h4:hover, h5:hover, h6:hover, td:hover, span:hover, a:hover {
+                    outline: 1px dashed #c4b5fd !important;
+                    outline-offset: 2px;
+                }
+                img:hover {
+                    outline: 2px dashed #7c3aed !important;
+                    outline-offset: 3px;
+                    filter: brightness(0.95);
+                }
+                .ag-selected {
+                    outline: 2px solid #7c3aed !important;
+                    outline-offset: 3px;
+                    border-radius: 2px;
+                }
+                .ag-img-selected {
+                    outline: 3px solid #7c3aed !important;
+                    outline-offset: 2px;
+                }
+                [contenteditable="true"] {
+                    cursor: text !important;
+                    outline: 2px solid #7c3aed !important;
+                    outline-offset: 3px;
+                    border-radius: 2px;
+                    white-space: pre-wrap;
+                }
+                .ag-resize-handle {
+                    position: absolute;
+                    width: 12px;
+                    height: 12px;
+                    background: #7c3aed;
+                    border: 2px solid white;
+                    border-radius: 50%;
+                    cursor: nwse-resize;
+                    z-index: 1000;
+                    box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+                    display: none;
+                }
+                .ag-drag-handle {
+                    position: absolute;
+                    width: 24px;
+                    height: 24px;
+                    background: #7c3aed;
+                    border: 2px solid white;
+                    border-radius: 4px;
+                    cursor: grab;
+                    z-index: 1000;
+                    box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+                    display: none;
+                    color: white;
+                    text-align: center;
+                    line-height: 20px;
+                    font-size: 14px;
+                    user-select: none;
+                    font-family: sans-serif;
+                }
+                .ag-drag-handle:active {
+                    cursor: grabbing;
+                }
+                .ag-drop-indicator {
+                    position: absolute;
+                    height: 4px;
+                    background: #3b82f6;
+                    border-radius: 2px;
+                    z-index: 999;
+                    display: none;
+                    pointer-events: none;
+                    box-shadow: 0 0 4px rgba(59, 130, 246, 0.5);
+                }
+                .ag-ghost {
+                    position: fixed !important;
+                    pointer-events: none !important;
+                    opacity: 0.8 !important;
+                    z-index: 9999 !important;
+                    box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1) !important;
+                    transition: none !important;
+                    background: white !important;
+                    margin: 0 !important;
+                }
+                html::-webkit-scrollbar, body::-webkit-scrollbar, *::-webkit-scrollbar { 
+                    display: none !important; width: 0 !important; height: 0 !important;
+                }
+                html, body, * {
+                    scrollbar-width: none !important;
+                    -ms-overflow-style: none !important;
+                    scroll-behavior: smooth !important;
+                }
+            `;
+            doc.head.appendChild(style);
+        }
 
-        const style = doc.createElement("style");
-        style.id = styleId;
-        style.innerHTML = `
-            p, h1, h2, h3, h4, h5, h6, td, span, a {
-                cursor: pointer !important;
-                transition: outline 0.15s ease;
+        // Add resize handle element if not exists
+        if (!doc.getElementById("ag-resize-handle")) {
+            const handle = doc.createElement("div");
+            handle.id = "ag-resize-handle";
+            handle.className = "ag-resize-handle";
+            doc.body.appendChild(handle);
+        }
+
+        if (!doc.getElementById("ag-drag-handle")) {
+            const handle = doc.createElement("div");
+            handle.id = "ag-drag-handle";
+            handle.className = "ag-drag-handle";
+            handle.innerHTML = "⋮⋮"; // Drag icon
+            doc.body.appendChild(handle);
+        }
+
+        if (!doc.getElementById("ag-drop-indicator")) {
+            const indicator = doc.createElement("div");
+            indicator.id = "ag-drop-indicator";
+            indicator.className = "ag-drop-indicator";
+            doc.body.appendChild(indicator);
+        }
+    }, []);
+
+    const updateResizeHandlePosition = useCallback(() => {
+        const iframe = iframeRef.current;
+        if (!iframe || !iframe.contentDocument) return;
+        const doc = iframe.contentDocument;
+        const resizeHandle = doc.getElementById("ag-resize-handle");
+        const dragHandle = doc.getElementById("ag-drag-handle");
+        const el = selectedElementRef.current;
+
+        if (el) {
+            const rect = el.getBoundingClientRect();
+            // Need to account for scroll position of iframe
+            const scrollX = iframe.contentWindow?.scrollX || 0;
+            const scrollY = iframe.contentWindow?.scrollY || 0;
+
+            if (dragHandle && !isBlockDraggingRef.current) {
+                dragHandle.style.left = `${rect.left + scrollX - 12}px`;
+                dragHandle.style.top = `${rect.top + scrollY - 12}px`;
+                dragHandle.style.display = "block";
             }
-            img {
-                cursor: pointer !important;
-                transition: outline 0.15s ease, filter 0.15s ease;
+
+            if (resizeHandle && el.tagName === "IMG") {
+                resizeHandle.style.left = `${rect.right + scrollX - 6}px`;
+                resizeHandle.style.top = `${rect.bottom + scrollY - 6}px`;
+                resizeHandle.style.display = "block";
+            } else if (resizeHandle) {
+                resizeHandle.style.display = "none";
             }
-            p:hover, h1:hover, h2:hover, h3:hover, h4:hover, h5:hover, h6:hover, td:hover, span:hover, a:hover {
-                outline: 1px dashed #c4b5fd !important;
-                outline-offset: 2px;
-            }
-            img:hover {
-                outline: 2px dashed #7c3aed !important;
-                outline-offset: 3px;
-                filter: brightness(0.92);
-            }
-            .ag-selected {
-                outline: 2px solid #7c3aed !important;
-                outline-offset: 3px;
-                border-radius: 2px;
-            }
-            .ag-selected:hover { outline: 2px solid #7c3aed !important; }
-            .ag-img-selected {
-                outline: 3px solid #7c3aed !important;
-                outline-offset: 2px;
-                filter: brightness(0.88);
-            }
-            [contenteditable="true"] {
-                cursor: text !important;
-                outline: 2px solid #7c3aed !important;
-                outline-offset: 3px;
-                border-radius: 2px;
-                white-space: pre-wrap;
-            }
-            html::-webkit-scrollbar, body::-webkit-scrollbar, *::-webkit-scrollbar { 
-                display: none !important; width: 0 !important; height: 0 !important;
-            }
-            html, body, * {
-                scrollbar-width: none !important;
-                -ms-overflow-style: none !important;
-                scroll-behavior: smooth !important;
-            }
-        `;
-        doc.head.appendChild(style);
+        } else {
+            if (resizeHandle) resizeHandle.style.display = "none";
+            if (dragHandle) dragHandle.style.display = "none";
+        }
     }, []);
 
     // Handle iframe load
@@ -155,142 +286,309 @@ export function LivePreview({ html, mjml, isLoading, onMjmlChange, onCopyMjml, o
 
         const EDITABLE_TAGS = ["P", "DIV", "H1", "H2", "H3", "H4", "H5", "H6", "TD", "SPAN", "A", "STRONG", "B", "I", "EM"];
 
-        doc.addEventListener("click", (e) => {
+        const clearSelection = () => {
+            if (selectedElementRef.current) {
+                selectedElementRef.current.classList.remove("ag-selected");
+                selectedElementRef.current.classList.remove("ag-img-selected");
+                selectedElementRef.current.removeAttribute("contenteditable");
+                try { selectedElementRef.current.blur(); } catch { /* noop */ }
+            }
+            selectedElementRef.current = null;
+            setHasSelection(false);
+            setSelectedProps(DEFAULT_PROPS);
+            updateResizeHandlePosition();
+        };
+
+        doc.addEventListener("mousedown", (e) => {
             const target = e.target as HTMLElement;
+            const resizeHandle = doc.getElementById("ag-resize-handle");
+            const dragHandle = doc.getElementById("ag-drag-handle");
+
+            if (target === resizeHandle && selectedElementRef.current?.tagName === "IMG") {
+                e.preventDefault();
+                isResizingRef.current = true;
+                resizeTargetRef.current = selectedElementRef.current as HTMLImageElement;
+                resizeStartXRef.current = e.clientX;
+                resizeStartWidthRef.current = resizeTargetRef.current.offsetWidth;
+                return;
+            }
+
+            if (target === dragHandle && selectedElementRef.current) {
+                e.preventDefault();
+                e.stopPropagation();
+                
+                isBlockDraggingRef.current = true;
+                dragTargetRef.current = selectedElementRef.current;
+                
+                if (dragHandle) dragHandle.style.display = "none";
+                if (resizeHandle) resizeHandle.style.display = "none";
+                
+                const rect = selectedElementRef.current.getBoundingClientRect();
+                const ghost = selectedElementRef.current.cloneNode(true) as HTMLElement;
+                
+                // Remove contenteditable if we copied it while editing
+                ghost.removeAttribute("contenteditable");
+                
+                ghost.classList.add("ag-ghost");
+                ghost.style.width = `${rect.width}px`;
+                ghost.style.height = `${rect.height}px`;
+                ghost.style.left = `${rect.left}px`;
+                ghost.style.top = `${rect.top}px`;
+                
+                const offsetX = e.clientX - rect.left;
+                const offsetY = e.clientY - rect.top;
+                
+                selectedElementRef.current.style.opacity = "0.3";
+                
+                doc.body.appendChild(ghost);
+                ghostElementRef.current = ghost;
+                
+                (ghost as any)._offsetX = offsetX;
+                (ghost as any)._offsetY = offsetY;
+                return;
+            }
 
             if (target.tagName === "IMG") {
                 e.stopPropagation();
-                const prevEl = selectedElementRef.current;
-                if (prevEl) {
-                    prevEl.classList.remove("ag-selected");
-                    prevEl.removeAttribute("contenteditable");
-                    selectedElementRef.current = null;
-                    setHasSelection(false);
+                if (selectedElementRef.current && selectedElementRef.current !== target) {
+                    selectedElementRef.current.classList.remove("ag-selected");
+                    selectedElementRef.current.classList.remove("ag-img-selected");
                 }
-                doc.querySelectorAll(".ag-img-selected").forEach(el => el.classList.remove("ag-img-selected"));
+                
+                selectedElementRef.current = target;
                 target.classList.add("ag-img-selected");
                 clickedImageRef.current = target as HTMLImageElement;
-                setImageModalOpen(true);
-                return;
-            }
 
-            doc.querySelectorAll(".ag-img-selected").forEach(el => el.classList.remove("ag-img-selected"));
-
-            if (!EDITABLE_TAGS.includes(target.tagName)) {
-                const el = selectedElementRef.current;
-                if (el) {
-                    el.classList.remove("ag-selected");
-                    el.removeAttribute("contenteditable");
-                    try { el.blur(); } catch { /* noop */ }
-                    selectedElementRef.current = null;
-                    setHasSelection(false);
-                    setSelectedProps(DEFAULT_PROPS);
-                    onMjmlChangeRef.current?.(mjmlRef.current, doc.documentElement.outerHTML);
+                const cs = win.getComputedStyle(target);
+                // Try to get width from attribute or style
+                const attrWidth = target.getAttribute("width");
+                let widthPercent = 100;
+                if (attrWidth && attrWidth.endsWith("%")) {
+                    widthPercent = parseInt(attrWidth);
+                } else if (target.style.width && target.style.width.endsWith("%")) {
+                    widthPercent = parseInt(target.style.width);
+                } else {
+                    // Fallback to calculating based on parent
+                    const parentWidth = target.parentElement?.offsetWidth || 1;
+                    widthPercent = Math.round((target.offsetWidth / parentWidth) * 100);
                 }
+
+                setSelectedProps({
+                    ...DEFAULT_PROPS,
+                    isImage: true,
+                    elementTag: "img",
+                    width: widthPercent,
+                    borderRadius: parseInt(cs.borderRadius) || 0,
+                    src: (target as HTMLImageElement).src
+                });
+                setHasSelection(true);
+                setShowEditPanel(true);
+                setTimeout(updateResizeHandlePosition, 0);
                 return;
             }
 
-            if (selectedElementRef.current && selectedElementRef.current !== target) {
-                selectedElementRef.current.classList.remove("ag-selected");
-                selectedElementRef.current.removeAttribute("contenteditable");
+            if (EDITABLE_TAGS.includes(target.tagName)) {
+                if (selectedElementRef.current && selectedElementRef.current !== target) {
+                    selectedElementRef.current.classList.remove("ag-selected");
+                    selectedElementRef.current.classList.remove("ag-img-selected");
+                }
+                selectedElementRef.current = target;
+                target.classList.add("ag-selected");
+
+                const cs = win.getComputedStyle(target);
+                const align = cs.textAlign as "left" | "center" | "right";
+
+                setSelectedProps({
+                    ...DEFAULT_PROPS,
+                    isImage: false,
+                    fontSize: parseInt(cs.fontSize) || 16,
+                    fontWeight: cs.fontWeight === "700" || cs.fontWeight === "bold" ? "bold" : "normal",
+                    color: rgbToHex(cs.color) || "#1e293b",
+                    align: (["left", "center", "right"].includes(align) ? align : "left") as "left" | "center" | "right",
+                    fontFamily: cs.fontFamily || "",
+                    content: target.innerHTML || target.textContent || "",
+                    elementTag: target.tagName.toLowerCase(),
+                });
+                setHasSelection(true);
+                setShowEditPanel(true);
+                updateResizeHandlePosition();
+                return;
             }
 
-            selectedElementRef.current = target;
-            target.classList.add("ag-selected");
+            // Clicked outside any editable element
+            if (target === doc.body || target === doc.documentElement) {
+                clearSelection();
+            }
+        });
 
-            const cs = win.getComputedStyle(target);
-            const align = cs.textAlign as "left" | "center" | "right";
+        doc.addEventListener("mousemove", (e) => {
+            if (isResizingRef.current && resizeTargetRef.current) {
+                const deltaX = e.clientX - resizeStartXRef.current;
+                const newWidthPx = resizeStartWidthRef.current + deltaX;
+                const parentWidth = resizeTargetRef.current.parentElement?.offsetWidth || 1;
+                const newWidthPercent = Math.min(100, Math.max(10, Math.round((newWidthPx / parentWidth) * 100)));
+                
+                resizeTargetRef.current.style.width = `${newWidthPercent}%`;
+                resizeTargetRef.current.setAttribute("width", `${newWidthPercent}%`);
+                
+                setSelectedProps(prev => ({ ...prev, width: newWidthPercent }));
+                updateResizeHandlePosition();
+                return;
+            }
 
-            const props: TextProperties = {
-                fontSize: parseInt(cs.fontSize) || 16,
-                fontWeight: cs.fontWeight === "700" || cs.fontWeight === "bold" ? "bold" : "normal",
-                color: rgbToHex(cs.color) || "#1e293b",
-                align: (["left", "center", "right"].includes(align) ? align : "left") as "left" | "center" | "right",
-                fontFamily: cs.fontFamily || "",
-                content: target.innerHTML || target.textContent || "",
-                elementTag: target.tagName.toLowerCase(),
-            };
+            if (isBlockDraggingRef.current && ghostElementRef.current && dragTargetRef.current) {
+                e.preventDefault();
+                
+                const ghost = ghostElementRef.current;
+                const offsetX = (ghost as any)._offsetX || 0;
+                const offsetY = (ghost as any)._offsetY || 0;
+                
+                ghost.style.left = `${e.clientX - offsetX}px`;
+                ghost.style.top = `${e.clientY - offsetY}px`;
+                
+                ghost.style.display = 'none';
+                const elUnderMouse = doc.elementFromPoint(e.clientX, e.clientY) as HTMLElement;
+                ghost.style.display = '';
+                
+                const dropIndicator = doc.getElementById("ag-drop-indicator");
+                
+                let dropTarget: HTMLElement | null = elUnderMouse;
+                while (dropTarget && dropTarget !== doc.body && dropTarget !== doc.documentElement) {
+                    if (EDITABLE_TAGS.includes(dropTarget.tagName) || dropTarget.tagName === "IMG") {
+                        break;
+                    }
+                    dropTarget = dropTarget.parentElement;
+                }
+                
+                if (dropTarget && dropTarget !== dragTargetRef.current && dropTarget.tagName !== "BODY" && dropTarget.tagName !== "HTML") {
+                    const rect = dropTarget.getBoundingClientRect();
+                    const isTopHalf = e.clientY < rect.top + rect.height / 2;
+                    dropPositionRef.current = isTopHalf ? "before" : "after";
+                    dropTargetRef.current = dropTarget;
+                    
+                    const scrollX = win.scrollX;
+                    const scrollY = win.scrollY;
+                    
+                    if (dropIndicator) {
+                        dropIndicator.style.width = `${rect.width}px`;
+                        dropIndicator.style.left = `${rect.left + scrollX}px`;
+                        dropIndicator.style.top = isTopHalf ? `${rect.top + scrollY - 2}px` : `${rect.bottom + scrollY - 2}px`;
+                        dropIndicator.style.display = "block";
+                    }
+                } else {
+                    dropTargetRef.current = null;
+                    if (dropIndicator) dropIndicator.style.display = "none";
+                }
+            }
+        });
 
-            setSelectedProps(props);
-            setHasSelection(true);
-            setShowEditPanel(true);
+        doc.addEventListener("mouseup", () => {
+            if (isResizingRef.current) {
+                isResizingRef.current = false;
+                resizeTargetRef.current = null;
+                propagateChanges();
+            }
+
+            if (isBlockDraggingRef.current) {
+                isBlockDraggingRef.current = false;
+                
+                const dragTarget = dragTargetRef.current;
+                const dropTarget = dropTargetRef.current;
+                const position = dropPositionRef.current;
+                const ghost = ghostElementRef.current;
+                const dropIndicator = doc.getElementById("ag-drop-indicator");
+                
+                if (ghost) ghost.remove();
+                if (dropIndicator) dropIndicator.style.display = "none";
+                
+                if (dragTarget) {
+                    dragTarget.style.opacity = "";
+                    
+                    if (dropTarget && dropTarget.parentNode) {
+                        try {
+                            if (position === "before") {
+                                dropTarget.parentNode.insertBefore(dragTarget, dropTarget);
+                            } else {
+                                if (dropTarget.nextSibling) {
+                                    dropTarget.parentNode.insertBefore(dragTarget, dropTarget.nextSibling);
+                                } else {
+                                    dropTarget.parentNode.appendChild(dragTarget);
+                                }
+                            }
+                            propagateChanges();
+                        } catch (err) {
+                            console.error("Failed to reorder element:", err);
+                        }
+                    }
+                }
+                
+                dragTargetRef.current = null;
+                dropTargetRef.current = null;
+                ghostElementRef.current = null;
+                setTimeout(updateResizeHandlePosition, 10);
+            }
         });
 
         doc.addEventListener("input", (e) => {
             const target = e.target as HTMLElement;
             if (target.contentEditable === "true") {
                 const newContent = target.innerHTML || target.textContent || "";
-                setSelectedProps(prev => {
-                    const next = { ...prev, content: newContent };
-                    target.style.fontSize = `${next.fontSize}px`;
-                    target.style.fontWeight = next.fontWeight;
-                    target.style.color = next.color;
-                    target.style.textAlign = next.align;
-                    if (next.fontFamily) target.style.fontFamily = next.fontFamily;
-                    return next;
-                });
+                setSelectedProps(prev => ({ ...prev, content: newContent }));
                 onMjmlChangeRef.current?.(mjmlRef.current, doc.documentElement.outerHTML);
             }
         });
 
         doc.addEventListener("keydown", (e) => {
-            if (e.key === "Escape") {
-                const el = selectedElementRef.current;
-                if (el) {
-                    el.classList.remove("ag-selected");
-                    el.removeAttribute("contenteditable");
-                    try { el.blur(); } catch { /* noop */ }
-                    selectedElementRef.current = null;
-                    setHasSelection(false);
-                    setSelectedProps(DEFAULT_PROPS);
-                }
-                doc.querySelectorAll(".ag-img-selected").forEach(el => el.classList.remove("ag-img-selected"));
-            }
+            if (e.key === "Escape") clearSelection();
         });
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [injectIframeStyles]);
+        
+        // Polling update for layout shifts
+        const interval = setInterval(updateResizeHandlePosition, 500);
+        return () => clearInterval(interval);
+    }, [injectIframeStyles, updateResizeHandlePosition, propagateChanges]);
 
-    // Re-inject styles when html changes
+    // Re-inject styles and reposition handle when html changes
     useEffect(() => {
         const doc = iframeRef.current?.contentDocument;
-        if (doc) injectIframeStyles(doc);
-    }, [html, injectIframeStyles]);
+        if (doc) {
+            injectIframeStyles(doc);
+            updateResizeHandlePosition();
+        }
+    }, [html, injectIframeStyles, updateResizeHandlePosition]);
 
     // Apply style changes to the selected iframe element
-    const applyStyle = useCallback((prop: Partial<TextProperties>) => {
+    const applyStyle = useCallback((prop: Partial<ElementProperties>) => {
         setSelectedProps(prev => {
             const next = { ...prev, ...prop };
             const el = selectedElementRef.current;
             if (el) {
-                if (prop.fontSize !== undefined) el.style.fontSize = `${next.fontSize}px`;
-                if (prop.fontWeight !== undefined) el.style.fontWeight = next.fontWeight;
-                if (prop.color !== undefined) el.style.color = next.color;
-                if (prop.align !== undefined) {
-                    el.style.textAlign = next.align;
-                    if (el.hasAttribute("align")) el.setAttribute("align", next.align);
-                    const display = el.ownerDocument.defaultView?.getComputedStyle(el).display;
-                    if (display === "inline" || display === "inline-block") {
-                        let parent = el.parentElement;
-                        while (parent && parent.tagName !== "BODY") {
-                            if (["P", "DIV", "H1", "H2", "H3", "H4", "H5", "H6", "TD"].includes(parent.tagName)) {
-                                parent.style.textAlign = next.align;
-                                if (parent.hasAttribute("align")) parent.setAttribute("align", next.align);
-                                break;
-                            }
-                            parent = parent.parentElement;
-                        }
+                if (next.isImage) {
+                    const img = el as HTMLImageElement;
+                    if (prop.width !== undefined) {
+                        img.style.width = `${next.width}%`;
+                        img.setAttribute("width", `${next.width}%`);
+                    }
+                    if (prop.borderRadius !== undefined) img.style.borderRadius = `${next.borderRadius}px`;
+                    setTimeout(updateResizeHandlePosition, 0);
+                } else {
+                    if (prop.fontSize !== undefined) el.style.fontSize = `${next.fontSize}px`;
+                    if (prop.fontWeight !== undefined) el.style.fontWeight = next.fontWeight;
+                    if (prop.color !== undefined) el.style.color = next.color;
+                    if (prop.align !== undefined) {
+                        el.style.textAlign = next.align;
+                        if (el.hasAttribute("align")) el.setAttribute("align", next.align);
                     }
                 }
             }
             propagateChanges();
             return next;
         });
-    }, [propagateChanges]);
+    }, [propagateChanges, updateResizeHandlePosition]);
 
     // Enable contentEditable on selected element
     const enableTextEdit = () => {
         const el = selectedElementRef.current;
-        if (!el) return;
+        if (!el || el.tagName === "IMG") return;
         el.setAttribute("contenteditable", "true");
         el.focus();
         const range = el.ownerDocument!.createRange();
@@ -307,7 +605,7 @@ export function LivePreview({ html, mjml, isLoading, onMjmlChange, onCopyMjml, o
         setSelectedProps(prev => {
             const next = { ...prev, content: contentStr };
             const el = selectedElementRef.current;
-            if (el) {
+            if (el && !next.isImage) {
                 el.innerHTML = contentStr;
                 reapplyStyles(el, next);
                 propagateChanges();
@@ -316,24 +614,27 @@ export function LivePreview({ html, mjml, isLoading, onMjmlChange, onCopyMjml, o
         });
     }, [reapplyStyles, propagateChanges]);
 
-    // Handle image file upload from modal
+    // Handle image replacement
+    const handleReplaceImage = () => {
+        imageInputRef.current?.click();
+    };
+
     const handleImageFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
         if (!file || !clickedImageRef.current) return;
 
+        const targetImg = clickedImageRef.current;
         const reader = new FileReader();
         reader.onload = (ev) => {
             const dataUrl = ev.target?.result as string;
-            if (dataUrl && clickedImageRef.current) {
-                clickedImageRef.current.src = dataUrl;
-                const doc = iframeRef.current?.contentDocument;
-                if (doc) doc.querySelectorAll(".ag-img-selected").forEach(el => el.classList.remove("ag-img-selected"));
+            if (dataUrl && targetImg) {
+                targetImg.src = dataUrl;
+                setSelectedProps(prev => ({ ...prev, src: dataUrl }));
                 propagateChanges();
+                setTimeout(updateResizeHandlePosition, 100);
             }
         };
         reader.readAsDataURL(file);
-        setImageModalOpen(false);
-        clickedImageRef.current = null;
         if (imageInputRef.current) imageInputRef.current.value = "";
     };
 
@@ -343,7 +644,7 @@ export function LivePreview({ html, mjml, isLoading, onMjmlChange, onCopyMjml, o
         setTimeout(() => setCopied(false), 2000);
     };
 
-    // ── Drag-to-resize logic ─────────────────────────────────────────────────
+    // ── Drag-to-resize logic (Sidebar) ──────────────────────────────────────────
     const handleDragStart = useCallback((e: React.MouseEvent) => {
         e.preventDefault();
         isDraggingRef.current = true;
@@ -352,7 +653,7 @@ export function LivePreview({ html, mjml, isLoading, onMjmlChange, onCopyMjml, o
 
         const onMouseMove = (me: MouseEvent) => {
             if (!isDraggingRef.current) return;
-            const delta = dragStartXRef.current - me.clientX; // drag left → increase width
+            const delta = dragStartXRef.current - me.clientX; 
             const newW = Math.min(PANEL_MAX_WIDTH, Math.max(PANEL_MIN_WIDTH, dragStartWidthRef.current + delta));
             setPanelWidth(newW);
         };
@@ -367,13 +668,9 @@ export function LivePreview({ html, mjml, isLoading, onMjmlChange, onCopyMjml, o
         document.addEventListener("mouseup", onMouseUp);
     }, [panelWidth]);
 
-    // Toolbar alignment icons map
-    const ALIGN_ICONS = { left: AlignLeft, center: AlignCenter, right: AlignRight };
-    // Suppress lint on unused ALIGN_ICONS within the panel (kept for potential future use)
-    void ALIGN_ICONS; void Bold;
-
     return (
         <div className="flex flex-col h-full w-full bg-[#f5f7fa]">
+            <input ref={imageInputRef} type="file" accept="image/*" className="hidden" onChange={handleImageFileChange} />
 
             {/* ── Toolbar ── */}
             <div className="border-b border-slate-200 bg-white flex items-center justify-between px-5 shrink-0 shadow-sm" style={{ height: 52 }}>
@@ -383,7 +680,6 @@ export function LivePreview({ html, mjml, isLoading, onMjmlChange, onCopyMjml, o
                 </div>
 
                 <div className="flex items-center gap-2">
-                    {/* Desktop / Mobile toggle */}
                     <div className="flex items-center bg-slate-100 p-1 rounded-lg gap-0.5">
                         {(["desktop", "mobile"] as const).map((mode) => (
                             <Tooltip key={mode} content={mode === "desktop" ? "Desktop view" : "Mobile view"}>
@@ -402,9 +698,8 @@ export function LivePreview({ html, mjml, isLoading, onMjmlChange, onCopyMjml, o
 
                     <div className="w-px h-5 bg-slate-200" />
 
-                    {/* Edit panel toggle */}
                     {html && (
-                        <Tooltip content="Text Properties Panel">
+                        <Tooltip content="Show Properties Panel">
                             <button
                                 onClick={() => setShowEditPanel(v => !v)}
                                 className={clsx(
@@ -415,14 +710,13 @@ export function LivePreview({ html, mjml, isLoading, onMjmlChange, onCopyMjml, o
                                 )}
                             >
                                 <PencilLine className="w-3.5 h-3.5" />
-                                Edit
+                                Properties
                             </button>
                         </Tooltip>
                     )}
 
                     <div className="w-px h-5 bg-slate-200" />
 
-                    {/* Copy & Export */}
                     <Tooltip content="Copy MJML">
                         <button onClick={handleCopyMjml} disabled={!html} className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors disabled:opacity-40">
                             {copied ? <Check className="w-4 h-4 text-emerald-500" /> : <Copy className="w-4 h-4" />}
@@ -439,15 +733,10 @@ export function LivePreview({ html, mjml, isLoading, onMjmlChange, onCopyMjml, o
 
             {/* ── Content row ── */}
             <div className="flex flex-1 min-h-0">
-
-                {/* ── Preview canvas ── */}
                 <div className="flex-1 overflow-auto p-6 flex items-start justify-center relative scrollbar-hide">
-
-                    {/* Loading overlay */}
                     {isLoading && (
                         <div className="absolute inset-x-6 top-6 bottom-6 z-10 flex flex-col items-center justify-center bg-white/80 backdrop-blur-[2px] animate-fade-in rounded-xl overflow-hidden border border-slate-200/50">
                             <div className="w-full max-w-md bg-white p-8 flex flex-col gap-6 scale-95 opacity-80 pointer-events-none">
-                                {/* Mock Header */}
                                 <div className="flex items-center justify-between">
                                     <Skeleton width="5rem" height="1.5rem" />
                                     <div className="flex gap-2">
@@ -455,36 +744,24 @@ export function LivePreview({ html, mjml, isLoading, onMjmlChange, onCopyMjml, o
                                         <Skeleton width="2rem" height="0.5rem" />
                                     </div>
                                 </div>
-
-                                {/* Mock Hero */}
                                 <Skeleton width="100%" height="160px" borderRadius="12px" />
-
-                                {/* Mock Text Content */}
                                 <div className="space-y-3">
                                     <Skeleton width="100%" height="0.8rem" />
                                     <Skeleton width="90%" height="0.8rem" />
-                                    <Skeleton width="95%" height="0.8rem" />
-                                    <Skeleton width="40%" height="0.8rem" />
                                 </div>
-
-                                {/* Mock CTA */}
                                 <div className="flex justify-center pt-2">
                                     <Skeleton width="8rem" height="2.5rem" borderRadius="8px" />
                                 </div>
-
-                                {/* Status message */}
                                 <div className="flex flex-col items-center gap-1.5 pt-4">
                                     <div className="flex items-center gap-1">
                                         <div className="w-1.5 h-1.5 bg-violet-600 rounded-full animate-pulse" />
                                         <p className="text-sm font-bold text-slate-800 tracking-tight">Gemini is crafting your email</p>
                                     </div>
-                                    <p className="text-[11px] text-slate-400 font-medium">Generating MJML & optimized HTML...</p>
                                 </div>
                             </div>
                         </div>
                     )}
 
-                    {/* Email frame */}
                     <div
                         className={clsx(
                             "bg-white shadow-2xl rounded-xl overflow-hidden border border-slate-200 transition-all duration-500 ease-out scrollbar-hide",
@@ -508,14 +785,12 @@ export function LivePreview({ html, mjml, isLoading, onMjmlChange, onCopyMjml, o
                                 </div>
                                 <div className="text-center">
                                     <p className="text-sm font-semibold text-slate-500">Your email preview will appear here</p>
-                                    <p className="text-xs text-slate-400 mt-1">Describe your email in the prompt bar to get started</p>
                                 </div>
                             </div>
                         )}
                     </div>
                 </div>
 
-                {/* ── Properties Panel (draggable width) ── */}
                 <AnimatePresence>
                     {showEditPanel && html && (
                         <motion.div
@@ -526,7 +801,6 @@ export function LivePreview({ html, mjml, isLoading, onMjmlChange, onCopyMjml, o
                             className="shrink-0 relative border-l border-slate-200 bg-white h-full overflow-hidden"
                             style={{ width: panelWidth }}
                         >
-                            {/* ── Drag Handle ── */}
                             <div
                                 onMouseDown={handleDragStart}
                                 className="absolute left-0 top-0 bottom-0 w-1.5 cursor-col-resize z-20 group flex items-center justify-center hover:bg-violet-100 transition-colors"
@@ -535,14 +809,14 @@ export function LivePreview({ html, mjml, isLoading, onMjmlChange, onCopyMjml, o
                                 <div className="w-0.5 h-8 bg-slate-300 group-hover:bg-violet-400 rounded-full transition-colors" />
                             </div>
 
-                            {/* Panel content (offset by drag handle) */}
                             <div className="pl-1.5 h-full" style={{ width: panelWidth }}>
-                                <TextPropertiesPanel
+                                <PropertiesPanel
                                     hasSelection={hasSelection}
                                     selectedProps={selectedProps}
                                     onContentChange={handleContentChange}
                                     onApplyStyle={applyStyle}
                                     onEnableTextEdit={enableTextEdit}
+                                    onReplaceImage={handleReplaceImage}
                                     onClose={() => setShowEditPanel(false)}
                                 />
                             </div>
@@ -550,84 +824,6 @@ export function LivePreview({ html, mjml, isLoading, onMjmlChange, onCopyMjml, o
                     )}
                 </AnimatePresence>
             </div>
-
-            {/* ── Image Upload Modal ── */}
-            <AnimatePresence>
-                {imageModalOpen && (
-                    <motion.div
-                        initial={{ opacity: 0 }}
-                        animate={{ opacity: 1 }}
-                        exit={{ opacity: 0 }}
-                        className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm"
-                        onClick={(e) => {
-                            if (e.target === e.currentTarget) {
-                                setImageModalOpen(false);
-                                const doc = iframeRef.current?.contentDocument;
-                                if (doc) doc.querySelectorAll(".ag-img-selected").forEach(el => el.classList.remove("ag-img-selected"));
-                            }
-                        }}
-                    >
-                        <motion.div
-                            initial={{ scale: 0.92, opacity: 0, y: 10 }}
-                            animate={{ scale: 1, opacity: 1, y: 0 }}
-                            exit={{ scale: 0.92, opacity: 0, y: 10 }}
-                            transition={{ duration: 0.18, ease: "easeOut" }}
-                            className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-sm mx-4 overflow-hidden"
-                        >
-                            {/* Modal header */}
-                            <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
-                                <div className="flex items-center gap-2">
-                                    <div className="w-8 h-8 rounded-xl bg-violet-100 flex items-center justify-center">
-                                        <ImageIcon className="w-4 h-4 text-violet-600" />
-                                    </div>
-                                    <div>
-                                        <h3 className="text-sm font-bold text-slate-800">Replace Image</h3>
-                                        <p className="text-[11px] text-slate-400">Upload your own image</p>
-                                    </div>
-                                </div>
-                                <button
-                                    onClick={() => {
-                                        setImageModalOpen(false);
-                                        const doc = iframeRef.current?.contentDocument;
-                                        if (doc) doc.querySelectorAll(".ag-img-selected").forEach(el => el.classList.remove("ag-img-selected"));
-                                    }}
-                                    className="p-1.5 rounded-lg hover:bg-slate-100 transition-colors text-slate-400 hover:text-slate-600"
-                                >
-                                    <X className="w-4 h-4" />
-                                </button>
-                            </div>
-
-                            {/* Modal body */}
-                            <div className="p-5">
-                                <label
-                                    htmlFor="image-replace-input"
-                                    className="flex flex-col items-center justify-center gap-3 border-2 border-dashed border-violet-200 hover:border-violet-400 bg-violet-50/50 hover:bg-violet-50 rounded-xl p-8 cursor-pointer transition-all group"
-                                >
-                                    <div className="w-12 h-12 rounded-2xl bg-violet-100 group-hover:bg-violet-200 flex items-center justify-center transition-colors">
-                                        <Upload className="w-5 h-5 text-violet-600" />
-                                    </div>
-                                    <div className="text-center">
-                                        <p className="text-sm font-semibold text-slate-700">Click to upload image</p>
-                                        <p className="text-[11px] text-slate-400 mt-0.5">PNG, JPG, GIF, WebP supported</p>
-                                    </div>
-                                    <input
-                                        id="image-replace-input"
-                                        ref={imageInputRef}
-                                        type="file"
-                                        accept="image/*"
-                                        className="hidden"
-                                        onChange={handleImageFileChange}
-                                    />
-                                </label>
-
-                                <p className="text-[11px] text-slate-400 text-center mt-3">
-                                    The image will be embedded directly in the email as a data URL
-                                </p>
-                            </div>
-                        </motion.div>
-                    </motion.div>
-                )}
-            </AnimatePresence>
         </div>
     );
 }

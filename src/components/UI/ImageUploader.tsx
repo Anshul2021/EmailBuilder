@@ -9,7 +9,7 @@ function cn(...inputs: ClassValue[]) {
 }
 
 export interface ImageUploaderProps {
-    onImageChange: (base64: string | null, mimeType: string | null) => void;
+    onImageChange: (base64: string | null, mimeType: string | null, dataUrl?: string | null) => void;
     className?: string;
     previewUrl?: string | null;
 }
@@ -41,7 +41,7 @@ export function ImageUploader({ onImageChange, className, previewUrl: initialPre
             const result = e.target?.result as string;
             setPreview(result);
             const base64Data = result.split(",")[1];
-            onImageChange(base64Data, file.type);
+            onImageChange(base64Data, file.type, result);
         };
         reader.readAsDataURL(file);
     };
@@ -65,7 +65,7 @@ export function ImageUploader({ onImageChange, className, previewUrl: initialPre
     const handleRemove = (e: React.MouseEvent) => {
         e.stopPropagation();
         setPreview(null);
-        onImageChange(null, null);
+        onImageChange(null, null, null);
         if (inputRef.current) inputRef.current.value = "";
     };
 

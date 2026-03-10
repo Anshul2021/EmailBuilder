@@ -58,6 +58,7 @@ export function PromptEditor({
     const [prompt, setPrompt] = useState("");
     const [imageBase64, setImageBase64] = useState<string | null>(null);
     const [mimeType, setMimeType] = useState<string | null>(null);
+    const [previewUrl, setPreviewUrl] = useState<string | null>(null);
     const selectedModel = ACTIVE_MODEL;
     const [showImageUploader, setShowImageUploader] = useState(false);
     const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -74,6 +75,7 @@ export function PromptEditor({
             setPrompt("");
             setImageBase64(null);
             setMimeType(null);
+            setPreviewUrl(null);
             setShowImageUploader(false);
         }
     };
@@ -249,9 +251,11 @@ export function PromptEditor({
                                 className="mb-3 overflow-hidden"
                             >
                                 <ImageUploader
-                                    onImageChange={(base64, mime) => {
+                                    previewUrl={previewUrl}
+                                    onImageChange={(base64, mime, dataUrl) => {
                                         setImageBase64(base64);
                                         setMimeType(mime);
+                                        setPreviewUrl(dataUrl || null);
                                     }}
                                 />
                             </motion.div>
@@ -307,6 +311,7 @@ export function PromptEditor({
                                                         const base64Data = result.split(",")[1];
                                                         setImageBase64(base64Data);
                                                         setMimeType(file.type);
+                                                        setPreviewUrl(result);
                                                         setShowImageUploader(true);
                                                     }
                                                 };

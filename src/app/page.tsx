@@ -7,6 +7,9 @@ import { useCredits } from "@/hooks/useCredits";
 import { X, AlertCircle } from "lucide-react";
 import { SAMPLE_TEMPLATE } from "@/lib/sampleTemplate";
 import { motion } from "framer-motion";
+import { HistoryPanel } from "@/components/HistoryPanel";
+import { saveTemplate, TemplateRecord } from "@/lib/supabaseService";
+import { Save, History } from "lucide-react";
 
 interface Message {
   role: "user" | "model";
@@ -21,6 +24,7 @@ export default function Home() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [isPromptCollapsed, setIsPromptCollapsed] = useState(false);
+  const [showHistory, setShowHistory] = useState(false);
   const { credits, totalCredits, percentage, deductCredits } = useCredits();
 
   // Ref to track live-edited HTML from the preview editor (avoids iframe reload)
@@ -102,8 +106,40 @@ export default function Home() {
     }
   };
 
+  const handleSaveToSupabase = async () => {
+    const content = editedHtmlRef.current || htmlContent;
+    if (!content || !mjml) {
+      alert("No template to save. Generate one first!");
+      return;
+    }
+
+    const title = prompt("Enter a name for this template:", "New Template");
+    if (title === null) return; // cancelled
+
+    setLoading(true);
+    try {
+      await saveTemplate(title, mjml, content);
+      alert("Template saved successfully!");
+    } catch (err: any) {
+      console.error(err);
+      alert(`Failed to save template: ${err.message || "Ensure Database is configured and RLS policies allow inserts."}`);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleSelectHistory = (template: TemplateRecord) => {
+    editedHtmlRef.current = "";
+    setHtmlContent(template.html);
+    setMjml(template.mjml);
+    setMessages([{ role: "model", text: `Loaded template: ${template.template_name}` } as Message]);
+    setShowHistory(false);
+  };
+
   return (
-    <main className="flex h-screen w-full overflow-hidden bg-[#f5f7fa]">
+    <div className="flex flex-col h-screen w-full overflow-hidden bg-[#f5f7fa]">
+      {/* Main Content Area */}
+      <main className="flex flex-1 min-h-0 w-full relative">
       {/* Left Panel - Prompt Sidebar (collapsible) */}
       <motion.div
         initial={false}
@@ -149,8 +185,19 @@ export default function Home() {
           onMjmlChange={handleMjmlChange}
           onCopyMjml={handleCopyMjml}
           onExportHtml={handleExportHtml}
+          onSaveTemplate={handleSaveToSupabase}
+          onOpenHistory={() => setShowHistory(true)}
         />
       </div>
-    </main>
+      </main>
+
+      {/* History Panel Modal */}
+      {showHistory && (
+        <HistoryPanel 
+          onClose={() => setShowHistory(false)} 
+          onSelect={handleSelectHistory} 
+        />
+      )}
+    </div>
   );
 }

@@ -1,13 +1,15 @@
 "use client";
+"use client";
 
 import { useState, useRef, useCallback, useEffect } from "react";
-import { Monitor, Smartphone, MailOpen, AlignLeft, AlignCenter, AlignRight, Bold, Copy, Download, PencilLine, Check, ImageIcon, X, Upload } from "lucide-react";
+import { Monitor, Smartphone, MailOpen, AlignLeft, AlignCenter, AlignRight, Bold, Copy, Download, PencilLine, Check, ImageIcon, X, Upload, Undo2, Redo2, RotateCcw, Save, History } from "lucide-react";
 import { clsx } from "clsx";
 import { Tooltip } from "./UI/Tooltip";
 import { motion, AnimatePresence } from "framer-motion";
 import { PropertiesPanel } from "./PropertiesPanel";
 import type { ElementProperties } from "./PropertiesPanel";
 import { Skeleton } from "primereact/skeleton";
+import { PreviewToolbar } from "./PreviewToolbar";
 
 interface LivePreviewProps {
     html: string;
@@ -16,6 +18,8 @@ interface LivePreviewProps {
     onMjmlChange?: (newMjml: string, newHtml: string) => void;
     onCopyMjml: () => void;
     onExportHtml: () => void;
+    onSaveTemplate?: () => void;
+    onOpenHistory?: () => void;
 }
 
 const DEFAULT_PROPS: ElementProperties = {
@@ -44,7 +48,7 @@ const PANEL_MIN_WIDTH = 240;
 const PANEL_MAX_WIDTH = 520;
 const PANEL_DEFAULT_WIDTH = 340;
 
-export function LivePreview({ html, mjml, isLoading, onMjmlChange, onCopyMjml, onExportHtml }: LivePreviewProps) {
+export function LivePreview({ html, mjml, isLoading, onMjmlChange, onCopyMjml, onExportHtml, onSaveTemplate, onOpenHistory }: LivePreviewProps) {
     const [viewMode, setViewMode] = useState<"desktop" | "mobile">("desktop");
     const [showEditPanel, setShowEditPanel] = useState(false);
     const [selectedProps, setSelectedProps] = useState<ElementProperties>(DEFAULT_PROPS);
@@ -63,6 +67,26 @@ export function LivePreview({ html, mjml, isLoading, onMjmlChange, onCopyMjml, o
     const iframeRef = useRef<HTMLIFrameElement>(null);
     const selectedElementRef = useRef<HTMLElement | null>(null);
 
+
+    // History (Undo/Redo)
+    const [undoStack, setUndoStack] = useState<string[]>([]);
+    const [redoStack, setRedoStack] = useState<string[]>([]);
+    const initialHtmlRef = useRef<string>(html);
+
+    useEffect(() => {
+        if (html && !initialHtmlRef.current) {
+            initialHtmlRef.current = html;
+        }
+    }, [html]);
+
+    const saveVersion = useCallback((newHtml: string) => {
+        setUndoStack(prev => {
+            if (prev.length > 0 && prev[prev.length - 1] === newHtml) return prev;
+            return [...prev, newHtml].slice(-50);
+        });
+        setRedoStack([]);
+    }, []);
+
     // Resizing state
     const isResizingRef = useRef(false);
     const resizeStartXRef = useRef(0);
@@ -75,6 +99,7 @@ export function LivePreview({ html, mjml, isLoading, onMjmlChange, onCopyMjml, o
     const ghostElementRef = useRef<HTMLElement | null>(null);
     const dropTargetRef = useRef<HTMLElement | null>(null);
     const dropPositionRef = useRef<"before" | "after">("before");
+
 
     // Refs to avoid stale closures in iframe event listeners
     const onMjmlChangeRef = useRef(onMjmlChange);
@@ -147,6 +172,27 @@ export function LivePreview({ html, mjml, isLoading, onMjmlChange, onCopyMjml, o
                     border-radius: 2px;
                     white-space: pre-wrap;
                 }
+
+                .ag-delete-handle {
+                    position: absolute;
+                    width: 20px;
+                    height: 20px;
+                    background: #ef4444;
+                    color: white;
+                    border: 2px solid white;
+                    border-radius: 4px;
+                    cursor: pointer;
+                    z-index: 1000;
+                    box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+                    display: none;
+                    text-align: center;
+                    line-height: 16px;
+                    font-size: 14px;
+                    font-weight: bold;
+                    user-select: none;
+                    font-family: sans-serif;
+                }
+                .ag-delete-handle:hover { background: #dc2626; }
                 .ag-resize-handle {
                     position: absolute;
                     width: 12px;
@@ -228,6 +274,15 @@ export function LivePreview({ html, mjml, isLoading, onMjmlChange, onCopyMjml, o
             doc.body.appendChild(handle);
         }
 
+
+        if (!doc.getElementById("ag-delete-handle")) {
+            const handle = doc.createElement("div");
+            handle.id = "ag-delete-handle";
+            handle.className = "ag-delete-handle";
+            handle.innerHTML = "×";
+            handle.title = "Delete block";
+            doc.body.appendChild(handle);
+        }
         if (!doc.getElementById("ag-drop-indicator")) {
             const indicator = doc.createElement("div");
             indicator.id = "ag-drop-indicator";
@@ -250,10 +305,16 @@ export function LivePreview({ html, mjml, isLoading, onMjmlChange, onCopyMjml, o
             const scrollX = iframe.contentWindow?.scrollX || 0;
             const scrollY = iframe.contentWindow?.scrollY || 0;
 
+const deleteHandle = doc.getElementById("ag-delete-handle");
             if (dragHandle && !isBlockDraggingRef.current) {
                 dragHandle.style.left = `${rect.left + scrollX - 12}px`;
                 dragHandle.style.top = `${rect.top + scrollY - 12}px`;
                 dragHandle.style.display = "block";
+            }
+            if (deleteHandle && !isBlockDraggingRef.current) {
+                deleteHandle.style.left = `${rect.right + scrollX - 8}px`;
+                deleteHandle.style.top = `${rect.top + scrollY - 12}px`;
+                deleteHandle.style.display = "block";
             }
 
             if (resizeHandle && el.tagName === "IMG") {
@@ -266,8 +327,55 @@ export function LivePreview({ html, mjml, isLoading, onMjmlChange, onCopyMjml, o
         } else {
             if (resizeHandle) resizeHandle.style.display = "none";
             if (dragHandle) dragHandle.style.display = "none";
+            const deleteHandle = doc.getElementById("ag-delete-handle");
+            if (deleteHandle) deleteHandle.style.display = "none";
         }
     }, []);
+
+    const applyHtmlToIframe = useCallback((newHtmlStr: string) => {
+        const doc = iframeRef.current?.contentDocument;
+        if (!doc) return;
+        const parser = new DOMParser();
+        const newDoc = parser.parseFromString(newHtmlStr, "text/html");
+        doc.head.innerHTML = newDoc.head.innerHTML;
+        doc.body.innerHTML = newDoc.body.innerHTML;
+        injectIframeStyles(doc);
+        selectedElementRef.current = null;
+        setHasSelection(false);
+        setSelectedProps(DEFAULT_PROPS);
+        updateResizeHandlePosition();
+    }, [injectIframeStyles, updateResizeHandlePosition]);
+
+    const undo = useCallback(() => {
+        if (undoStack.length === 0) return;
+        const currentHtml = iframeRef.current?.contentDocument?.documentElement.outerHTML || "";
+        const previousHtml = undoStack[undoStack.length - 1];
+        setRedoStack(prev => [...prev, currentHtml]);
+        setUndoStack(prev => prev.slice(0, -1));
+        applyHtmlToIframe(previousHtml);
+        if (onMjmlChangeRef.current) onMjmlChangeRef.current(mjmlRef.current, previousHtml);
+    }, [undoStack, applyHtmlToIframe]);
+
+    const redo = useCallback(() => {
+        if (redoStack.length === 0) return;
+        const currentHtml = iframeRef.current?.contentDocument?.documentElement.outerHTML || "";
+        const nextHtml = redoStack[redoStack.length - 1];
+        setUndoStack(prev => [...prev, currentHtml]);
+        setRedoStack(prev => prev.slice(0, -1));
+        applyHtmlToIframe(nextHtml);
+        if (onMjmlChangeRef.current) onMjmlChangeRef.current(mjmlRef.current, nextHtml);
+    }, [redoStack, applyHtmlToIframe]);
+
+    const reset = useCallback(() => {
+        if (!initialHtmlRef.current) return;
+        if (window.confirm("Are you sure you want to reset all changes?")) {
+            const currentHtml = iframeRef.current?.contentDocument?.documentElement.outerHTML || "";
+            saveVersion(currentHtml);
+            applyHtmlToIframe(initialHtmlRef.current);
+            if (onMjmlChangeRef.current) onMjmlChangeRef.current(mjmlRef.current, initialHtmlRef.current);
+        }
+    }, [saveVersion, applyHtmlToIframe]);
+
 
     // Handle iframe load
     const handleIframeLoad = useCallback(() => {
@@ -299,9 +407,39 @@ export function LivePreview({ html, mjml, isLoading, onMjmlChange, onCopyMjml, o
             updateResizeHandlePosition();
         };
 
+
+        const handleGlobalKeyDown = (e: KeyboardEvent) => {
+            if ((e.ctrlKey || e.metaKey) && e.key === "z") {
+                e.preventDefault();
+                if (e.shiftKey) redo();
+                else undo();
+            } else if ((e.ctrlKey || e.metaKey) && e.key === "y") {
+                e.preventDefault();
+                redo();
+            } else if ((e.key === "Delete" || e.key === "Backspace") && selectedElementRef.current && selectedElementRef.current.contentEditable !== "true") {
+                e.preventDefault();
+                saveVersion(iframeRef.current?.contentDocument?.documentElement.outerHTML || "");
+                selectedElementRef.current.remove();
+                propagateChanges();
+                clearSelection();
+            }
+        };
+        win.addEventListener("keydown", handleGlobalKeyDown);
+
         doc.addEventListener("mousedown", (e) => {
             const target = e.target as HTMLElement;
             const resizeHandle = doc.getElementById("ag-resize-handle");
+            const deleteHandle = doc.getElementById("ag-delete-handle");
+            if (target === deleteHandle && selectedElementRef.current) {
+                e.preventDefault();
+                e.stopPropagation();
+                saveVersion(doc.documentElement.outerHTML);
+                selectedElementRef.current.remove();
+                propagateChanges();
+                clearSelection();
+                return;
+            }
+
             const dragHandle = doc.getElementById("ag-drag-handle");
 
             if (target === resizeHandle && selectedElementRef.current?.tagName === "IMG") {
@@ -673,64 +811,23 @@ export function LivePreview({ html, mjml, isLoading, onMjmlChange, onCopyMjml, o
             <input ref={imageInputRef} type="file" accept="image/*" className="hidden" onChange={handleImageFileChange} />
 
             {/* ── Toolbar ── */}
-            <div className="border-b border-slate-200 bg-white flex items-center justify-between px-5 shrink-0 shadow-sm" style={{ height: 52 }}>
-                <div className="flex items-center gap-2 text-sm font-semibold text-slate-700">
-                    <MailOpen className="w-4 h-4 text-violet-500" />
-                    <span>Live Preview</span>
-                </div>
-
-                <div className="flex items-center gap-2">
-                    <div className="flex items-center bg-slate-100 p-1 rounded-lg gap-0.5">
-                        {(["desktop", "mobile"] as const).map((mode) => (
-                            <Tooltip key={mode} content={mode === "desktop" ? "Desktop view" : "Mobile view"}>
-                                <button
-                                    onClick={() => setViewMode(mode)}
-                                    className={clsx(
-                                        "p-1.5 rounded-md transition-all",
-                                        viewMode === mode ? "bg-white shadow-sm text-violet-600" : "text-slate-400 hover:text-slate-600"
-                                    )}
-                                >
-                                    {mode === "desktop" ? <Monitor className="w-4 h-4" /> : <Smartphone className="w-4 h-4" />}
-                                </button>
-                            </Tooltip>
-                        ))}
-                    </div>
-
-                    <div className="w-px h-5 bg-slate-200" />
-
-                    {html && (
-                        <Tooltip content="Show Properties Panel">
-                            <button
-                                onClick={() => setShowEditPanel(v => !v)}
-                                className={clsx(
-                                    "flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg transition-all",
-                                    showEditPanel
-                                        ? "bg-violet-100 text-violet-700 border border-violet-200"
-                                        : "text-slate-500 hover:bg-slate-100 border border-transparent"
-                                )}
-                            >
-                                <PencilLine className="w-3.5 h-3.5" />
-                                Properties
-                            </button>
-                        </Tooltip>
-                    )}
-
-                    <div className="w-px h-5 bg-slate-200" />
-
-                    <Tooltip content="Copy MJML">
-                        <button onClick={handleCopyMjml} disabled={!html} className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors disabled:opacity-40">
-                            {copied ? <Check className="w-4 h-4 text-emerald-500" /> : <Copy className="w-4 h-4" />}
-                        </button>
-                    </Tooltip>
-                    <Tooltip content="Export HTML file">
-                        <button onClick={onExportHtml} disabled={!html} className="flex items-center gap-1.5 text-xs font-semibold bg-violet-600 text-white px-3 py-1.5 rounded-lg hover:bg-violet-700 transition-colors disabled:opacity-40 disabled:cursor-not-allowed">
-                            <Download className="w-3.5 h-3.5" />
-                            Export
-                        </button>
-                    </Tooltip>
-                </div>
-            </div>
-
+            <PreviewToolbar
+                viewMode={viewMode}
+                setViewMode={setViewMode}
+                showEditPanel={showEditPanel}
+                setShowEditPanel={setShowEditPanel}
+                undo={undo}
+                redo={redo}
+                reset={reset}
+                undoStackLength={undoStack.length}
+                redoStackLength={redoStack.length}
+                html={html}
+                copied={copied}
+                onCopyMjml={handleCopyMjml}
+                onOpenHistory={onOpenHistory}
+                onSaveTemplate={onSaveTemplate}
+                onExportHtml={onExportHtml}
+            />
             {/* ── Content row ── */}
             <div className="flex flex-1 min-h-0">
                 <div className="flex-1 overflow-auto p-6 flex items-start justify-center relative scrollbar-hide">

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { GoogleGenerativeAI, Part, Content } from "@google/generative-ai";
+import { SYSTEM_PROMPT } from "@/lib/prompts";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -7,19 +8,6 @@ export const maxDuration = 60;
 const ai = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "");
 
 // Use the model provided by the frontend, fallback to a stable 1.5 model
-
-const SYSTEM_PROMPT = `
-You are an expert MJML email template developer. 
-Your task is to generate valid MJML code based on the user's prompt.
-You MUST output ONLY the raw MJML code. Do not include markdown code blocks, explanations, or any other text before or after the code.
-
-Follow these strict rules:
-1. Always start with <mjml> and end with </mjml>.
-2. Use standard mjml components: mj-head, mj-body, mj-section, mj-column, mj-text, mj-image, mj-button, mj-divider, mj-social.
-3. Ensure the design is responsive and professional, matching modern clean aesthetics.
-4. If images are requested, use placeholder images like 'https://placehold.co/600x400/png' or similar unless the user specifies otherwise.
-5. Create fully functional, complete templates.
-`;
 
 export async function POST(req: NextRequest) {
     try {

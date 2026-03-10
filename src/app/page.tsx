@@ -108,12 +108,11 @@ export default function Home() {
       <motion.div
         initial={false}
         animate={{
-          width: isPromptCollapsed ? 0 : undefined,
-          minWidth: isPromptCollapsed ? 0 : undefined,
+          width: isPromptCollapsed ? 0 : "clamp(320px, 30vw, 380px)",
+          minWidth: isPromptCollapsed ? 0 : "320px",
         }}
         transition={{ duration: 0.28, ease: [0.4, 0, 0.2, 1] }}
         className="relative shrink-0 h-full shadow-panel overflow-visible"
-        style={{ width: isPromptCollapsed ? 0 : "clamp(320px, 22vw, 380px)" }}
       >
         <PromptEditor
           onGenerate={handleGenerate}

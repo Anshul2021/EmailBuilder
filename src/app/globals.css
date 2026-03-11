@@ -126,6 +126,20 @@
   .starter-card:active {
     transform: scale(0.97);
   }
+
+  /* Section-level editing */
+  .section-highlight-overlay {
+    outline: 2px dashed #a78bfa;
+    outline-offset: -2px;
+    transition: outline 0.15s ease;
+  }
+
+  /* Quick action chips */
+  .quick-action-chip {
+    @apply text-xs font-medium text-slate-500 bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5;
+    @apply hover:bg-violet-50 hover:text-violet-600 hover:border-violet-200;
+    @apply transition-all cursor-pointer;
+  }
 }
 
 @layer utilities {

@@ -7,12 +7,55 @@ export const maxDuration = 60;
 
 const ai = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "");
 
-// Use the model provided by the frontend, fallback to a stable 1.5 model
+/**
+ * Inject css-class="ag-section-N" on each <mj-section> BEFORE compilation.
+ * This gives us reliable class-based section detection in the compiled HTML.
+ */
+function injectSectionMarkers(mjmlCode: string): string {
+    let index = 0;
+    return mjmlCode.replace(/<mj-section([^>]*?)(\s*\/?>)/gi, (match, attrs, closing) => {
+        const marker = `ag-section-${index++}`;
+
+        // If css-class already exists, append to it
+        if (/css-class\s*=\s*"/i.test(attrs)) {
+            const updated = attrs.replace(
+                /css-class\s*=\s*"([^"]*)"/i,
+                `css-class="$1 ${marker}"`
+            );
+            return `<mj-section${updated}${closing}`;
+        }
+
+        // Otherwise add css-class attribute
+        return `<mj-section${attrs} css-class="${marker}"${closing}`;
+    });
+}
 
 export async function POST(req: NextRequest) {
     try {
         const body = await req.json();
-        const { prompt, imageBase64, mimeType, history = [], model: requestedModel } = body;
+        const { prompt, imageBase64, mimeType, currentMjml, history = [], model: requestedModel, compileOnly, mjmlCode: rawMjmlCode } = body;
+
+        // ── Compile-only mode: skip AI, just compile MJML → HTML ──
+        if (compileOnly && rawMjmlCode) {
+            try {
+                // Inject section markers before compiling
+                const markedMjml = injectSectionMarkers(rawMjmlCode);
+
+                // eslint-disable-next-line @typescript-eslint/no-require-imports
+                const mjml2html = require("mjml");
+                const mjmlFunc = typeof mjml2html === "function" ? mjml2html : mjml2html.default;
+                const { html, errors } = mjmlFunc(markedMjml, {
+                    validationLevel: "soft",
+                    keepComments: false,
+                });
+                if (errors?.length > 0) console.warn("[API] MJML compile warnings:", errors.length);
+                // Return the ORIGINAL mjml (without markers) but HTML with markers
+                return NextResponse.json({ mjml: rawMjmlCode, html });
+            } catch (compileError: unknown) {
+                const compileMsg = compileError instanceof Error ? compileError.message : String(compileError);
+                return NextResponse.json({ error: "Failed to compile MJML", details: compileMsg }, { status: 500 });
+            }
+        }
 
         // Resolve the exact API model ID, fallback to passed value
         const resolvedModel = requestedModel || "gemini-2.5-flash";
@@ -35,9 +78,30 @@ export async function POST(req: NextRequest) {
             });
 
             const parts: Part[] = [];
-            if (prompt) parts.push({ text: prompt });
+
+            // Build the prompt text
+            if (prompt) {
+                let textContent = prompt;
+                if (currentMjml) {
+                    textContent = `I have an existing MJML template and I want to make changes.
+
+CURRENT MJML TEMPLATE:
+${currentMjml}
+
+USER REQUEST:
+${prompt}
+
+Return the complete updated MJML. Modify only what was requested, preserve everything else.`;
+                }
+                parts.push({ text: textContent });
+            }
+
+            // For image-only requests, add an explicit instruction
             if (imageBase64 && mimeType) {
                 parts.push({ inlineData: { data: imageBase64, mimeType } });
+                if (!prompt) {
+                    parts.push({ text: "Analyze this email screenshot and generate MJML that replicates the layout, colors, typography, and structure as closely as possible. Create one mj-section per visible row in the image." });
+                }
             }
 
             const currentMessage: Content = { role: "user", parts };
@@ -57,7 +121,6 @@ export async function POST(req: NextRequest) {
             const errMsg: string = errObj?.message || String(genError);
             const status: number = errObj?.status || 500;
 
-            // Provide accurate, actionable error messages
             if (status === 429 || errMsg.includes("429") || errMsg.toLowerCase().includes("quota")) {
                 return NextResponse.json({
                     error: `Daily quota reached for ${requestedModel}. Switch to another model in the model selector.`,
@@ -83,20 +146,24 @@ export async function POST(req: NextRequest) {
         }
 
         // Clean MJML of any markdown fences
-        mjmlCode = mjmlCode.replace(/```(mjml|html)?\n?/g, "").replace(/```$/m, "").trim();
+        mjmlCode = mjmlCode.replace(/```(mjml|html|xml)?\n?/g, "").replace(/```$/m, "").trim();
 
-        // Compile MJML → HTML (mjml is excluded from RSC bundling via next.config.mjs)
+        // Compile MJML → HTML
         try {
+            // Inject section markers before compiling
+            const markedMjml = injectSectionMarkers(mjmlCode);
+
             // eslint-disable-next-line @typescript-eslint/no-require-imports
             const mjml2html = require("mjml");
             const mjmlFunc = typeof mjml2html === "function" ? mjml2html : mjml2html.default;
 
-            const { html, errors } = mjmlFunc(mjmlCode, {
+            const { html, errors } = mjmlFunc(markedMjml, {
                 validationLevel: "soft",
                 keepComments: false,
             });
 
             if (errors?.length > 0) console.warn("[API] MJML warnings:", errors.length);
+            // Return the ORIGINAL mjml (clean) but HTML with markers for section detection
             return NextResponse.json({ mjml: mjmlCode, html });
 
         } catch (compileError: unknown) {

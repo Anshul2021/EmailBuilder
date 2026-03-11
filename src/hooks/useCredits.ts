@@ -19,9 +19,26 @@ export function useCredits() {
         setIsInitializing(false);
     }, []);
 
+    /**
+     * Deduct credits based on MJML length.
+     * Full template generation: base cost + per-character.
+     * Section edits should pass a smaller length (~20% of full template).
+     */
     const deductCredits = useCallback((mjmlLength: number) => {
-        // Basic logic: base cost + per character of generation
-        const cost = Math.max(10, Math.floor(mjmlLength / 50));
+        const cost = Math.max(5, Math.floor(mjmlLength / 50));
+        setCredits((prev) => {
+            const next = Math.max(0, prev - cost);
+            localStorage.setItem(STORAGE_KEY, next.toString());
+            return next;
+        });
+    }, []);
+
+    /**
+     * Deduct a fixed small cost for section-level edits.
+     */
+    const deductSectionCredits = useCallback((sectionLength: number) => {
+        // Section edits cost ~20% of full generation
+        const cost = Math.max(3, Math.floor(sectionLength / 100));
         setCredits((prev) => {
             const next = Math.max(0, prev - cost);
             localStorage.setItem(STORAGE_KEY, next.toString());
@@ -41,6 +58,7 @@ export function useCredits() {
         totalCredits: TOTAL_CREDITS,
         percentage,
         deductCredits,
+        deductSectionCredits,
         resetCredits,
         isInitializing
     };

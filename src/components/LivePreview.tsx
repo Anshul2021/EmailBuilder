@@ -1,5 +1,4 @@
 "use client";
-"use client";
 
 import { useState, useRef, useCallback, useEffect } from "react";
 import { Skeleton } from "primereact/skeleton";
@@ -9,6 +8,8 @@ import { motion, AnimatePresence } from "framer-motion";
 import { MailOpen } from "lucide-react";
 import { PropertiesPanel } from "./PropertiesPanel";
 import type { ElementProperties } from "./PropertiesPanel";
+import { SectionControls } from "./SectionControls";
+import { SectionEditBar } from "./SectionEditBar";
 
 interface LivePreviewProps {
     html: string;
@@ -20,6 +21,12 @@ interface LivePreviewProps {
     onExportHtml: () => void;
     onSaveTemplate?: () => void;
     onOpenHistory?: () => void;
+    // Section editing callbacks
+    onSectionEdit?: (instruction: string, sectionIndex: number) => void;
+    onSectionDuplicate?: (sectionIndex: number) => void;
+    onSectionDelete?: (sectionIndex: number) => void;
+    onSectionMove?: (fromIndex: number, toIndex: number) => void;
+    isSectionEditing?: boolean;
 }
 
 const DEFAULT_PROPS: ElementProperties = {
@@ -48,7 +55,22 @@ const PANEL_MIN_WIDTH = 240;
 const PANEL_MAX_WIDTH = 520;
 const PANEL_DEFAULT_WIDTH = 340;
 
-export function LivePreview({ html, mjml, isLoading, loadingType = "generating", onMjmlChange, onCopyMjml, onExportHtml, onSaveTemplate, onOpenHistory }: LivePreviewProps) {
+export function LivePreview({
+    html,
+    mjml,
+    isLoading,
+    loadingType = "generating",
+    onMjmlChange,
+    onCopyMjml,
+    onExportHtml,
+    onSaveTemplate,
+    onOpenHistory,
+    onSectionEdit,
+    onSectionDuplicate,
+    onSectionDelete,
+    onSectionMove,
+    isSectionEditing = false,
+}: LivePreviewProps) {
     const [viewMode, setViewMode] = useState<"desktop" | "mobile">("desktop");
     const [showEditPanel, setShowEditPanel] = useState(false);
     const [selectedProps, setSelectedProps] = useState<ElementProperties>(DEFAULT_PROPS);
@@ -67,6 +89,13 @@ export function LivePreview({ html, mjml, isLoading, loadingType = "generating",
     const iframeRef = useRef<HTMLIFrameElement>(null);
     const selectedElementRef = useRef<HTMLElement | null>(null);
 
+    // Section editing state
+    const [hoveredSectionIndex, setHoveredSectionIndex] = useState<number | null>(null);
+    const [sectionControlsPos, setSectionControlsPos] = useState<{ top: number; right: number } | null>(null);
+    const [showSectionEditBar, setShowSectionEditBar] = useState(false);
+    const [editBarPosition, setEditBarPosition] = useState({ top: 0, left: 0, width: 400 });
+    const [editingSectionIndex, setEditingSectionIndex] = useState<number>(0);
+    const [sectionCount, setSectionCount] = useState(0);
 
     // History (Undo/Redo)
     const [undoStack, setUndoStack] = useState<string[]>([]);
@@ -99,7 +128,6 @@ export function LivePreview({ html, mjml, isLoading, loadingType = "generating",
     const ghostElementRef = useRef<HTMLElement | null>(null);
     const dropTargetRef = useRef<HTMLElement | null>(null);
     const dropPositionRef = useRef<"before" | "after">("before");
-
 
     // Refs to avoid stale closures in iframe event listeners
     const onMjmlChangeRef = useRef(onMjmlChange);
@@ -173,6 +201,13 @@ export function LivePreview({ html, mjml, isLoading, loadingType = "generating",
                     outline-offset: 3px;
                     border-radius: 2px;
                     white-space: pre-wrap;
+                }
+
+                /* Section hover highlight */
+                .ag-section-highlight {
+                    outline: 2px dashed #a78bfa !important;
+                    outline-offset: -2px;
+                    position: relative;
                 }
 
                 .ag-delete-handle {
@@ -272,10 +307,9 @@ export function LivePreview({ html, mjml, isLoading, loadingType = "generating",
             const handle = doc.createElement("div");
             handle.id = "ag-drag-handle";
             handle.className = "ag-drag-handle";
-            handle.innerHTML = "⋮⋮"; // Drag icon
+            handle.innerHTML = "⋮⋮";
             doc.body.appendChild(handle);
         }
-
 
         if (!doc.getElementById("ag-delete-handle")) {
             const handle = doc.createElement("div");
@@ -291,6 +325,26 @@ export function LivePreview({ html, mjml, isLoading, loadingType = "generating",
             indicator.className = "ag-drop-indicator";
             doc.body.appendChild(indicator);
         }
+
+        // ──── Section index data attributes ────
+        // MJML compiles each <mj-section> into a table structure.
+        // We mark section wrapper elements with data-section-index for controls.
+        const sectionWrappers = doc.querySelectorAll('table[width="100%"]');
+        let sectionIdx = 0;
+        sectionWrappers.forEach((table) => {
+            const el = table as HTMLElement;
+            // Heuristic: top-level full-width tables inside the body wrapper are sections
+            const parent = el.parentElement;
+            if (parent && (parent.tagName === "DIV" || parent.tagName === "BODY" || parent.closest('[class*="body"]'))) {
+                // Check it's not a nested table inside another section
+                const closestSection = el.closest('[data-section-index]');
+                if (!closestSection) {
+                    el.setAttribute("data-section-index", String(sectionIdx));
+                    sectionIdx++;
+                }
+            }
+        });
+        setSectionCount(sectionIdx);
     }, []);
 
     const updateResizeHandlePosition = useCallback(() => {
@@ -303,11 +357,10 @@ export function LivePreview({ html, mjml, isLoading, loadingType = "generating",
 
         if (el) {
             const rect = el.getBoundingClientRect();
-            // Need to account for scroll position of iframe
             const scrollX = iframe.contentWindow?.scrollX || 0;
             const scrollY = iframe.contentWindow?.scrollY || 0;
 
-const deleteHandle = doc.getElementById("ag-delete-handle");
+            const deleteHandle = doc.getElementById("ag-delete-handle");
             if (dragHandle && !isBlockDraggingRef.current) {
                 dragHandle.style.left = `${rect.left + scrollX - 12}px`;
                 dragHandle.style.top = `${rect.top + scrollY - 12}px`;
@@ -378,6 +431,18 @@ const deleteHandle = doc.getElementById("ag-delete-handle");
         }
     }, [saveVersion, applyHtmlToIframe]);
 
+    // ── Section hover detection ──
+    const findSectionFromElement = useCallback((target: HTMLElement): { element: HTMLElement; index: number } | null => {
+        let el: HTMLElement | null = target;
+        while (el) {
+            const idx = el.getAttribute("data-section-index");
+            if (idx !== null) {
+                return { element: el, index: parseInt(idx, 10) };
+            }
+            el = el.parentElement;
+        }
+        return null;
+    }, []);
 
     // Handle iframe load
     const handleIframeLoad = useCallback(() => {
@@ -409,7 +474,6 @@ const deleteHandle = doc.getElementById("ag-delete-handle");
             updateResizeHandlePosition();
         };
 
-
         const handleGlobalKeyDown = (e: KeyboardEvent) => {
             if ((e.ctrlKey || e.metaKey) && e.key === "z") {
                 e.preventDefault();
@@ -427,6 +491,93 @@ const deleteHandle = doc.getElementById("ag-delete-handle");
             }
         };
         win.addEventListener("keydown", handleGlobalKeyDown);
+
+        // ── Section hover tracking ──
+        let lastHoveredSection: HTMLElement | null = null;
+        doc.addEventListener("mousemove", (e) => {
+            // Handle image resizing
+            if (isResizingRef.current && resizeTargetRef.current) {
+                const deltaX = e.clientX - resizeStartXRef.current;
+                const newWidthPx = resizeStartWidthRef.current + deltaX;
+                const parentWidth = resizeTargetRef.current.parentElement?.offsetWidth || 1;
+                const newWidthPercent = Math.min(100, Math.max(10, Math.round((newWidthPx / parentWidth) * 100)));
+
+                resizeTargetRef.current.style.width = `${newWidthPercent}%`;
+                resizeTargetRef.current.setAttribute("width", `${newWidthPercent}%`);
+
+                setSelectedProps(prev => ({ ...prev, width: newWidthPercent }));
+                updateResizeHandlePosition();
+                return;
+            }
+
+            // Handle block dragging
+            if (isBlockDraggingRef.current && ghostElementRef.current && dragTargetRef.current) {
+                e.preventDefault();
+                const ghost = ghostElementRef.current;
+                const offsetX = (ghost as unknown as { _offsetX: number })._offsetX || 0;
+                const offsetY = (ghost as unknown as { _offsetY: number })._offsetY || 0;
+                ghost.style.left = `${e.clientX - offsetX}px`;
+                ghost.style.top = `${e.clientY - offsetY}px`;
+
+                ghost.style.display = 'none';
+                const elUnderMouse = doc.elementFromPoint(e.clientX, e.clientY) as HTMLElement;
+                ghost.style.display = '';
+
+                const dropIndicator = doc.getElementById("ag-drop-indicator");
+                let dropTarget: HTMLElement | null = elUnderMouse;
+                while (dropTarget && dropTarget !== doc.body && dropTarget !== doc.documentElement) {
+                    if (EDITABLE_TAGS.includes(dropTarget.tagName) || dropTarget.tagName === "IMG") break;
+                    dropTarget = dropTarget.parentElement;
+                }
+
+                if (dropTarget && dropTarget !== dragTargetRef.current && dropTarget.tagName !== "BODY" && dropTarget.tagName !== "HTML") {
+                    const rect = dropTarget.getBoundingClientRect();
+                    const isTopHalf = e.clientY < rect.top + rect.height / 2;
+                    dropPositionRef.current = isTopHalf ? "before" : "after";
+                    dropTargetRef.current = dropTarget;
+                    const scrollX = win.scrollX;
+                    const scrollY = win.scrollY;
+                    if (dropIndicator) {
+                        dropIndicator.style.width = `${rect.width}px`;
+                        dropIndicator.style.left = `${rect.left + scrollX}px`;
+                        dropIndicator.style.top = isTopHalf ? `${rect.top + scrollY - 2}px` : `${rect.bottom + scrollY - 2}px`;
+                        dropIndicator.style.display = "block";
+                    }
+                } else {
+                    dropTargetRef.current = null;
+                    if (dropIndicator) dropIndicator.style.display = "none";
+                }
+                return;
+            }
+
+            // Section hover detection
+            const target = e.target as HTMLElement;
+            const sectionInfo = findSectionFromElement(target);
+
+            if (sectionInfo) {
+                if (lastHoveredSection !== sectionInfo.element) {
+                    if (lastHoveredSection) lastHoveredSection.classList.remove("ag-section-highlight");
+                    sectionInfo.element.classList.add("ag-section-highlight");
+                    lastHoveredSection = sectionInfo.element;
+
+                    // Calculate position for section controls (in page coordinates)
+                    const iframeRect = iframe.getBoundingClientRect();
+                    const sectionRect = sectionInfo.element.getBoundingClientRect();
+                    setHoveredSectionIndex(sectionInfo.index);
+                    setSectionControlsPos({
+                        top: iframeRect.top + sectionRect.top + 4,
+                        right: window.innerWidth - (iframeRect.left + sectionRect.right) + 4,
+                    });
+                }
+            } else {
+                if (lastHoveredSection) {
+                    lastHoveredSection.classList.remove("ag-section-highlight");
+                    lastHoveredSection = null;
+                }
+                setHoveredSectionIndex(null);
+                setSectionControlsPos(null);
+            }
+        });
 
         doc.addEventListener("mousedown", (e) => {
             const target = e.target as HTMLElement;
@@ -456,32 +607,26 @@ const deleteHandle = doc.getElementById("ag-delete-handle");
             if (target === dragHandle && selectedElementRef.current) {
                 e.preventDefault();
                 e.stopPropagation();
-                
+
                 isBlockDraggingRef.current = true;
                 dragTargetRef.current = selectedElementRef.current;
-                
+
                 if (dragHandle) dragHandle.style.display = "none";
                 if (resizeHandle) resizeHandle.style.display = "none";
-                
+
                 const rect = selectedElementRef.current.getBoundingClientRect();
                 const ghost = selectedElementRef.current.cloneNode(true) as HTMLElement;
-                
-                // Remove contenteditable if we copied it while editing
                 ghost.removeAttribute("contenteditable");
-                
                 ghost.classList.add("ag-ghost");
                 ghost.style.width = `${rect.width}px`;
                 ghost.style.height = `${rect.height}px`;
                 ghost.style.left = `${rect.left}px`;
                 ghost.style.top = `${rect.top}px`;
-                
+
                 const offsetX = e.clientX - rect.left;
                 const offsetY = e.clientY - rect.top;
-                
                 selectedElementRef.current.style.opacity = "0.3";
-                
                 ghostElementRef.current = ghost;
-
                 (ghost as unknown as { _offsetX: number })._offsetX = offsetX;
                 (ghost as unknown as { _offsetY: number })._offsetY = offsetY;
                 return;
@@ -493,13 +638,12 @@ const deleteHandle = doc.getElementById("ag-delete-handle");
                     selectedElementRef.current.classList.remove("ag-selected");
                     selectedElementRef.current.classList.remove("ag-img-selected");
                 }
-                
+
                 selectedElementRef.current = target;
                 target.classList.add("ag-img-selected");
                 clickedImageRef.current = target as HTMLImageElement;
 
                 const cs = win.getComputedStyle(target);
-                // Try to get width from attribute or style
                 const attrWidth = target.getAttribute("width");
                 let widthPercent = 100;
                 if (attrWidth && attrWidth.endsWith("%")) {
@@ -507,7 +651,6 @@ const deleteHandle = doc.getElementById("ag-delete-handle");
                 } else if (target.style.width && target.style.width.endsWith("%")) {
                     widthPercent = parseInt(target.style.width);
                 } else {
-                    // Fallback to calculating based on parent
                     const parentWidth = target.parentElement?.offsetWidth || 1;
                     widthPercent = Math.round((target.offsetWidth / parentWidth) * 100);
                 }
@@ -560,67 +703,6 @@ const deleteHandle = doc.getElementById("ag-delete-handle");
             }
         });
 
-        doc.addEventListener("mousemove", (e) => {
-            if (isResizingRef.current && resizeTargetRef.current) {
-                const deltaX = e.clientX - resizeStartXRef.current;
-                const newWidthPx = resizeStartWidthRef.current + deltaX;
-                const parentWidth = resizeTargetRef.current.parentElement?.offsetWidth || 1;
-                const newWidthPercent = Math.min(100, Math.max(10, Math.round((newWidthPx / parentWidth) * 100)));
-                
-                resizeTargetRef.current.style.width = `${newWidthPercent}%`;
-                resizeTargetRef.current.setAttribute("width", `${newWidthPercent}%`);
-                
-                setSelectedProps(prev => ({ ...prev, width: newWidthPercent }));
-                updateResizeHandlePosition();
-                return;
-            }
-
-            if (isBlockDraggingRef.current && ghostElementRef.current && dragTargetRef.current) {
-                e.preventDefault();
-                
-                const ghost = ghostElementRef.current;
-                const offsetX = (ghost as unknown as { _offsetX: number })._offsetX || 0;
-                const offsetY = (ghost as unknown as { _offsetY: number })._offsetY || 0;
-                
-                ghost.style.left = `${e.clientX - offsetX}px`;
-                ghost.style.top = `${e.clientY - offsetY}px`;
-                
-                ghost.style.display = 'none';
-                const elUnderMouse = doc.elementFromPoint(e.clientX, e.clientY) as HTMLElement;
-                ghost.style.display = '';
-                
-                const dropIndicator = doc.getElementById("ag-drop-indicator");
-                
-                let dropTarget: HTMLElement | null = elUnderMouse;
-                while (dropTarget && dropTarget !== doc.body && dropTarget !== doc.documentElement) {
-                    if (EDITABLE_TAGS.includes(dropTarget.tagName) || dropTarget.tagName === "IMG") {
-                        break;
-                    }
-                    dropTarget = dropTarget.parentElement;
-                }
-                
-                if (dropTarget && dropTarget !== dragTargetRef.current && dropTarget.tagName !== "BODY" && dropTarget.tagName !== "HTML") {
-                    const rect = dropTarget.getBoundingClientRect();
-                    const isTopHalf = e.clientY < rect.top + rect.height / 2;
-                    dropPositionRef.current = isTopHalf ? "before" : "after";
-                    dropTargetRef.current = dropTarget;
-                    
-                    const scrollX = win.scrollX;
-                    const scrollY = win.scrollY;
-                    
-                    if (dropIndicator) {
-                        dropIndicator.style.width = `${rect.width}px`;
-                        dropIndicator.style.left = `${rect.left + scrollX}px`;
-                        dropIndicator.style.top = isTopHalf ? `${rect.top + scrollY - 2}px` : `${rect.bottom + scrollY - 2}px`;
-                        dropIndicator.style.display = "block";
-                    }
-                } else {
-                    dropTargetRef.current = null;
-                    if (dropIndicator) dropIndicator.style.display = "none";
-                }
-            }
-        });
-
         doc.addEventListener("mouseup", () => {
             if (isResizingRef.current) {
                 isResizingRef.current = false;
@@ -630,19 +712,19 @@ const deleteHandle = doc.getElementById("ag-delete-handle");
 
             if (isBlockDraggingRef.current) {
                 isBlockDraggingRef.current = false;
-                
+
                 const dragTarget = dragTargetRef.current;
                 const dropTarget = dropTargetRef.current;
                 const position = dropPositionRef.current;
                 const ghost = ghostElementRef.current;
                 const dropIndicator = doc.getElementById("ag-drop-indicator");
-                
+
                 if (ghost) ghost.remove();
                 if (dropIndicator) dropIndicator.style.display = "none";
-                
+
                 if (dragTarget) {
                     dragTarget.style.opacity = "";
-                    
+
                     if (dropTarget && dropTarget.parentNode) {
                         try {
                             if (position === "before") {
@@ -660,7 +742,7 @@ const deleteHandle = doc.getElementById("ag-delete-handle");
                         }
                     }
                 }
-                
+
                 dragTargetRef.current = null;
                 dropTargetRef.current = null;
                 ghostElementRef.current = null;
@@ -680,11 +762,11 @@ const deleteHandle = doc.getElementById("ag-delete-handle");
         doc.addEventListener("keydown", (e) => {
             if (e.key === "Escape") clearSelection();
         });
-        
+
         // Polling update for layout shifts
         const interval = setInterval(updateResizeHandlePosition, 500);
         return () => clearInterval(interval);
-    }, [injectIframeStyles, updateResizeHandlePosition, propagateChanges, undo, redo, saveVersion]);
+    }, [injectIframeStyles, updateResizeHandlePosition, propagateChanges, undo, redo, saveVersion, findSectionFromElement]);
 
     // Re-inject styles and reposition handle when html changes
     useEffect(() => {
@@ -794,23 +876,19 @@ const deleteHandle = doc.getElementById("ag-delete-handle");
 
         const selected = selectedElementRef.current;
         if (selected && selected.parentNode && selected.tagName !== "BODY" && selected.tagName !== "HTML") {
-            // Insert after selected element
             if (selected.nextSibling) {
                 selected.parentNode.insertBefore(newBlock, selected.nextSibling);
             } else {
                 selected.parentNode.appendChild(newBlock);
             }
         } else {
-            // Fallback: append to the end of the body or a master container
             const container = doc.querySelector("body > div") || doc.body;
             container.appendChild(newBlock);
         }
 
-        // Auto-select the new block safely
         setTimeout(() => {
             const clickEvent = new MouseEvent("mousedown", { bubbles: true, cancelable: true, view: iframeRef.current?.contentWindow });
             newBlock.dispatchEvent(clickEvent);
-            // Optionally auto-scroll to it
             newBlock.scrollIntoView({ behavior: "smooth", block: "center" });
         }, 100);
 
@@ -823,6 +901,54 @@ const deleteHandle = doc.getElementById("ag-delete-handle");
         setTimeout(() => setCopied(false), 2000);
     };
 
+    // ── Section action handlers ──
+    const handleSectionAiEdit = useCallback((sectionIndex: number) => {
+        const iframe = iframeRef.current;
+        if (!iframe) return;
+
+        const iframeRect = iframe.getBoundingClientRect();
+        const doc = iframe.contentDocument;
+        if (!doc) return;
+
+        const sectionEl = doc.querySelector(`[data-section-index="${sectionIndex}"]`) as HTMLElement;
+        if (!sectionEl) return;
+
+        const sectionRect = sectionEl.getBoundingClientRect();
+
+        setEditingSectionIndex(sectionIndex);
+        setEditBarPosition({
+            top: iframeRect.top + sectionRect.top - 48,
+            left: iframeRect.left + sectionRect.left,
+            width: sectionRect.width,
+        });
+        setShowSectionEditBar(true);
+    }, []);
+
+    const handleSectionEditSubmit = useCallback((instruction: string, sectionIndex: number) => {
+        if (onSectionEdit) {
+            onSectionEdit(instruction, sectionIndex);
+            setShowSectionEditBar(false);
+        }
+    }, [onSectionEdit]);
+
+    const handleSectionDuplicate = useCallback((sectionIndex: number) => {
+        if (onSectionDuplicate) onSectionDuplicate(sectionIndex);
+    }, [onSectionDuplicate]);
+
+    const handleSectionDelete = useCallback((sectionIndex: number) => {
+        if (onSectionDelete && window.confirm("Delete this section?")) {
+            onSectionDelete(sectionIndex);
+        }
+    }, [onSectionDelete]);
+
+    const handleSectionMoveUp = useCallback((sectionIndex: number) => {
+        if (onSectionMove && sectionIndex > 0) onSectionMove(sectionIndex, sectionIndex - 1);
+    }, [onSectionMove]);
+
+    const handleSectionMoveDown = useCallback((sectionIndex: number) => {
+        if (onSectionMove && sectionIndex < sectionCount - 1) onSectionMove(sectionIndex, sectionIndex + 1);
+    }, [onSectionMove, sectionCount]);
+
     // ── Drag-to-resize logic (Sidebar) ──────────────────────────────────────────
     const handleDragStart = useCallback((e: React.MouseEvent) => {
         e.preventDefault();
@@ -832,7 +958,7 @@ const deleteHandle = doc.getElementById("ag-delete-handle");
 
         const onMouseMove = (me: MouseEvent) => {
             if (!isDraggingRef.current) return;
-            const delta = dragStartXRef.current - me.clientX; 
+            const delta = dragStartXRef.current - me.clientX;
             const newW = Math.min(PANEL_MAX_WIDTH, Math.max(PANEL_MIN_WIDTH, dragStartWidthRef.current + delta));
             setPanelWidth(newW);
         };
@@ -870,6 +996,37 @@ const deleteHandle = doc.getElementById("ag-delete-handle");
                 onExportHtml={onExportHtml}
                 onAddText={handleAddText}
             />
+
+            {/* ── Section Controls Overlay ── */}
+            <AnimatePresence>
+                {hoveredSectionIndex !== null && sectionControlsPos && !showSectionEditBar && (
+                    <SectionControls
+                        key={`section-controls-${hoveredSectionIndex}`}
+                        position={sectionControlsPos}
+                        sectionIndex={hoveredSectionIndex}
+                        totalSections={sectionCount}
+                        onAiEdit={handleSectionAiEdit}
+                        onDuplicate={handleSectionDuplicate}
+                        onDelete={handleSectionDelete}
+                        onMoveUp={handleSectionMoveUp}
+                        onMoveDown={handleSectionMoveDown}
+                    />
+                )}
+            </AnimatePresence>
+
+            {/* ── Section Edit Bar ── */}
+            <AnimatePresence>
+                {showSectionEditBar && (
+                    <SectionEditBar
+                        position={editBarPosition}
+                        sectionIndex={editingSectionIndex}
+                        onSubmit={handleSectionEditSubmit}
+                        onClose={() => setShowSectionEditBar(false)}
+                        isLoading={isSectionEditing}
+                    />
+                )}
+            </AnimatePresence>
+
             {/* ── Content row ── */}
             <div className="flex flex-1 min-h-0">
                 <div className="flex-1 overflow-auto p-6 flex items-start justify-center relative scrollbar-hide">

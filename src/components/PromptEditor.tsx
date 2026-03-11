@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
-import { SendHorizonal, FileCode, FileImage, RefreshCw, Sparkles, Paperclip, X, Zap, ChevronsLeft, ChevronsRight } from "lucide-react";
+import { SendHorizonal, FileCode, FileImage, RefreshCw, Sparkles, Paperclip, X, Zap, ChevronsLeft, ChevronsRight, Check } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Button } from "./UI/Button";
 import { TextArea } from "./UI/TextArea";
@@ -38,6 +38,15 @@ const STARTER_PROMPTS = [
     { icon: "🤝", label: "Onboarding", prompt: "A 3-step onboarding email guide for a SaaS app with icons and clean layout" },
 ];
 
+const QUICK_ACTIONS = [
+    { label: "Change colors", prompt: "Change the color scheme to a more modern palette" },
+    { label: "Add section", prompt: "Add a new content section with a heading and paragraph" },
+    { label: "Update CTA", prompt: "Make the CTA button more prominent with a bold color" },
+    { label: "Add footer", prompt: "Add a professional footer with social links and unsubscribe text" },
+    { label: "Dark mode", prompt: "Convert this to a dark background theme with light text" },
+    { label: "Add images", prompt: "Add placeholder images to make the layout more visual" },
+];
+
 const ACTIVE_MODEL = "gemini-2.5-flash";
 const ACTIVE_MODEL_LABEL = "Gemini 2.5 Flash";
 
@@ -61,6 +70,7 @@ export function PromptEditor({
     const [previewUrl, setPreviewUrl] = useState<string | null>(null);
     const selectedModel = ACTIVE_MODEL;
     const [showImageUploader, setShowImageUploader] = useState(false);
+    const [showFullHistory, setShowFullHistory] = useState(false);
     const messagesEndRef = useRef<HTMLDivElement>(null);
     const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -81,6 +91,10 @@ export function PromptEditor({
     };
 
     const canSubmit = (prompt.trim().length > 0 || !!imageBase64) && !isLoading;
+
+    // Get the latest user message and model response for command-mode view
+    const latestUserMessage = [...messages].reverse().find(m => m.role === "user");
+    const latestModelMessage = [...messages].reverse().find(m => m.role === "model");
 
     return (
         <div className="relative flex h-full">
@@ -129,7 +143,7 @@ export function PromptEditor({
                     </div>
                 </div>
 
-                {/* ── Scroll area: chat or starters ── */}
+                {/* ── Scroll area: command view or starters ── */}
                 <div className="flex-1 overflow-y-auto px-4 py-2 space-y-3">
 
                     {/* Starter prompts – only when no conversation */}
@@ -154,38 +168,126 @@ export function PromptEditor({
                         </div>
                     )}
 
-                    {/* Chat history */}
-                    <AnimatePresence>
-                        {messages.map((msg, i) => (
-                            <motion.div
-                                key={i}
-                                initial={{ opacity: 0, y: 6 }}
-                                animate={{ opacity: 1, y: 0 }}
-                                transition={{ duration: 0.25 }}
-                                className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}
-                            >
-                                {msg.role === "model" && (
-                                    <div className="flex items-start gap-2 max-w-[85%]">
-                                        <div className="w-6 h-6 rounded-lg bg-primary-100 flex items-center justify-center shrink-0 mt-0.5">
-                                            <Sparkles className="w-3.5 h-3.5 text-primary-600" />
-                                        </div>
-                                        <div className="bg-slate-50 border border-slate-200 text-slate-700 text-xs rounded-xl rounded-tl-sm px-3.5 py-2.5 leading-relaxed">
-                                            <span className="font-semibold text-primary-600 text-[10px] block mb-0.5 uppercase tracking-wider">AI</span>
-                                            {msg.text.startsWith("<mjml>")
-                                                ? "✅ Email template generated successfully."
-                                                : msg.text}
-                                        </div>
-                                    </div>
+                    {/* ── Command Mode: Show only latest exchange ── */}
+                    {hasTemplate && messages.length > 0 && !showFullHistory && (
+                        <div className="space-y-3">
+                            {/* Status indicator */}
+                            <div className="flex items-center gap-2 px-1">
+                                <div className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Last Command</span>
+                                {messages.length > 2 && (
+                                    <button
+                                        onClick={() => setShowFullHistory(true)}
+                                        className="ml-auto text-[10px] font-semibold text-violet-500 hover:text-violet-700 transition-colors"
+                                    >
+                                        Show history ({Math.floor(messages.length / 2)})
+                                    </button>
                                 )}
-                                {msg.role === "user" && (
-                                    <div className="bg-primary-600 text-white text-xs rounded-xl rounded-tr-sm px-3.5 py-2.5 max-w-[80%] leading-relaxed shadow-sm">
-                                        {msg.isImage && <span className="opacity-70 block text-[10px] mb-0.5">📎 Image attached</span>}
-                                        {msg.text || "(image only)"}
+                            </div>
+
+                            {/* Latest user command */}
+                            {latestUserMessage && (
+                                <motion.div
+                                    initial={{ opacity: 0, y: 6 }}
+                                    animate={{ opacity: 1, y: 0 }}
+                                    className="flex justify-end"
+                                >
+                                    <div className="bg-primary-600 text-white text-xs rounded-xl rounded-tr-sm px-3.5 py-2.5 max-w-[90%] leading-relaxed shadow-sm">
+                                        {latestUserMessage.isImage && <span className="opacity-70 block text-[10px] mb-0.5">📎 Image attached</span>}
+                                        {latestUserMessage.text || "(image only)"}
                                     </div>
-                                )}
-                            </motion.div>
-                        ))}
-                    </AnimatePresence>
+                                </motion.div>
+                            )}
+
+                            {/* Latest AI response */}
+                            {latestModelMessage && (
+                                <motion.div
+                                    initial={{ opacity: 0, y: 6 }}
+                                    animate={{ opacity: 1, y: 0 }}
+                                    className="flex items-start gap-2"
+                                >
+                                    <div className="w-6 h-6 rounded-lg bg-primary-100 flex items-center justify-center shrink-0 mt-0.5">
+                                        <Sparkles className="w-3.5 h-3.5 text-primary-600" />
+                                    </div>
+                                    <div className="bg-slate-50 border border-slate-200 text-slate-700 text-xs rounded-xl rounded-tl-sm px-3.5 py-2.5 leading-relaxed">
+                                        <div className="flex items-center gap-1.5 mb-0.5">
+                                            <Check className="w-3 h-3 text-emerald-500" />
+                                            <span className="font-semibold text-emerald-600 text-[10px] uppercase tracking-wider">Done</span>
+                                        </div>
+                                        {latestModelMessage.text.startsWith("<mjml>")
+                                            ? "Template updated successfully."
+                                            : latestModelMessage.text}
+                                    </div>
+                                </motion.div>
+                            )}
+
+                            {/* Quick actions */}
+                            <div className="pt-2">
+                                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest px-0.5 mb-2">Quick actions</p>
+                                <div className="flex flex-wrap gap-1.5">
+                                    {QUICK_ACTIONS.map((qa) => (
+                                        <button
+                                            key={qa.label}
+                                            onClick={() => {
+                                                setPrompt(qa.prompt);
+                                                textareaRef.current?.focus();
+                                            }}
+                                            className="text-[11px] font-medium text-slate-500 bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 hover:bg-violet-50 hover:text-violet-600 hover:border-violet-200 transition-all"
+                                        >
+                                            {qa.label}
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* ── Full History Mode ── */}
+                    {showFullHistory && (
+                        <div className="space-y-3">
+                            <div className="flex items-center gap-2 px-1">
+                                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Full History</span>
+                                <button
+                                    onClick={() => setShowFullHistory(false)}
+                                    className="ml-auto text-[10px] font-semibold text-violet-500 hover:text-violet-700 transition-colors"
+                                >
+                                    Show latest
+                                </button>
+                            </div>
+
+                            <AnimatePresence>
+                                {messages.map((msg, i) => (
+                                    <motion.div
+                                        key={i}
+                                        initial={{ opacity: 0, y: 6 }}
+                                        animate={{ opacity: 1, y: 0 }}
+                                        transition={{ duration: 0.25 }}
+                                        className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}
+                                    >
+                                        {msg.role === "model" && (
+                                            <div className="flex items-start gap-2 max-w-[85%]">
+                                                <div className="w-6 h-6 rounded-lg bg-primary-100 flex items-center justify-center shrink-0 mt-0.5">
+                                                    <Sparkles className="w-3.5 h-3.5 text-primary-600" />
+                                                </div>
+                                                <div className="bg-slate-50 border border-slate-200 text-slate-700 text-xs rounded-xl rounded-tl-sm px-3.5 py-2.5 leading-relaxed">
+                                                    <span className="font-semibold text-primary-600 text-[10px] block mb-0.5 uppercase tracking-wider">AI</span>
+                                                    {msg.text.startsWith("<mjml>")
+                                                        ? "✅ Email template generated successfully."
+                                                        : msg.text}
+                                                </div>
+                                            </div>
+                                        )}
+                                        {msg.role === "user" && (
+                                            <div className="bg-primary-600 text-white text-xs rounded-xl rounded-tr-sm px-3.5 py-2.5 max-w-[80%] leading-relaxed shadow-sm">
+                                                {msg.isImage && <span className="opacity-70 block text-[10px] mb-0.5">📎 Image attached</span>}
+                                                {msg.text || "(image only)"}
+                                            </div>
+                                        )}
+                                    </motion.div>
+                                ))}
+                            </AnimatePresence>
+                        </div>
+                    )}
 
                     {/* Loading indicator */}
                     {isLoading && (
@@ -281,6 +383,12 @@ export function PromptEditor({
                             <div className="flex items-center gap-1.5 px-3 pt-2.5 pb-1 border-b border-slate-100">
                                 <Zap className="w-3 h-3 text-violet-500 shrink-0" />
                                 <span className="text-[11px] font-semibold text-slate-500 select-none">{ACTIVE_MODEL_LABEL}</span>
+                                {hasTemplate && (
+                                    <span className="ml-auto text-[10px] font-medium text-emerald-500 flex items-center gap-1">
+                                        <div className="w-1 h-1 rounded-full bg-emerald-500" />
+                                        Edit mode
+                                    </span>
+                                )}
                             </div>
 
                             {/* Text input */}
@@ -289,7 +397,7 @@ export function PromptEditor({
                                 value={prompt}
                                 autoResize
                                 onChange={e => setPrompt(e.target.value)}
-                                placeholder="Describe the email you want to generate..."
+                                placeholder={hasTemplate ? "Describe changes to your email..." : "Describe the email you want to generate..."}
                                 className="w-full min-h-[80px] max-h-[180px] border-none shadow-none ring-0 ring-offset-0 focus-visible:ring-0 px-3 py-2.5 text-sm resize-none bg-white outline-none placeholder:text-slate-400 text-slate-800 rounded-none"
                                 onKeyDown={e => {
                                     if (e.key === "Enter" && !e.shiftKey) {

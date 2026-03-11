@@ -9,6 +9,7 @@ import { SAMPLE_TEMPLATE } from "@/lib/sampleTemplate";
 import { motion } from "framer-motion";
 import { HistoryPanel } from "@/components/HistoryPanel";
 import { saveTemplate, TemplateRecord } from "@/lib/supabaseService";
+import { getSection, replaceMjmlSection, duplicateSection, removeSection, moveSection } from "@/lib/mjmlParser";
 
 interface Message {
   role: "user" | "model";
@@ -25,6 +26,7 @@ export default function Home() {
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [isPromptCollapsed, setIsPromptCollapsed] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
+  const [isSectionEditing, setIsSectionEditing] = useState(false);
   const { credits, totalCredits, percentage, deductCredits } = useCredits();
 
   // Ref to track live-edited HTML from the preview editor (avoids iframe reload)
@@ -44,7 +46,7 @@ export default function Home() {
       const resp = await fetch("/api/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ prompt, imageBase64, mimeType, history: messages, model }),
+        body: JSON.stringify({ prompt, imageBase64, mimeType, currentMjml: mjml, history: messages, model }),
       });
 
       const data = await resp.json();
@@ -72,6 +74,109 @@ export default function Home() {
       setLoading(false);
     }
   };
+
+  // ── Compile MJML → HTML (no AI call) ──
+  const compileMjml = async (mjmlCode: string): Promise<{ html: string; mjml: string } | null> => {
+    try {
+      const resp = await fetch("/api/generate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ compileOnly: true, mjmlCode: mjmlCode }),
+      });
+      const data = await resp.json();
+      if (data.error) throw new Error(data.error);
+      return data;
+    } catch (err) {
+      console.error("MJML compile failed:", err);
+      return null;
+    }
+  };
+
+  // ── Section-level AI editing ──
+  const handleSectionEdit = useCallback(async (instruction: string, sectionIndex: number) => {
+    const sectionMjml = getSection(mjml, sectionIndex);
+    if (!sectionMjml) {
+      setErrorMsg("Could not find that section. Try regenerating the template.");
+      return;
+    }
+
+    setIsSectionEditing(true);
+    setErrorMsg(null);
+
+    try {
+      // Call section-only AI endpoint
+      const resp = await fetch("/api/generate-section", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sectionMjml,
+          instruction,
+          model: "gemini-2.5-flash",
+        }),
+      });
+
+      const data = await resp.json();
+      if (data.error) throw new Error(data.error);
+
+      // Patch the section into the full MJML
+      const updatedMjml = replaceMjmlSection(mjml, sectionIndex, data.sectionMjml);
+
+      // Recompile full template
+      const compiled = await compileMjml(updatedMjml);
+      if (!compiled) throw new Error("Failed to recompile template after section edit.");
+
+      setMjml(compiled.mjml);
+      setHtmlContent(compiled.html);
+      editedHtmlRef.current = "";
+
+      // Track in messages for context
+      setMessages(prev => [
+        ...prev,
+        { role: "user", text: `[Section ${sectionIndex + 1}] ${instruction}` } as Message,
+        { role: "model", text: `Section ${sectionIndex + 1} updated.` } as Message,
+      ]);
+
+      // Section edits cost less (approx 20% of full generation)
+      deductCredits(Math.floor(data.sectionMjml.length / 5));
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : "Section edit failed.";
+      console.error("Section edit failed:", message);
+      setErrorMsg(message);
+    } finally {
+      setIsSectionEditing(false);
+    }
+  }, [mjml, deductCredits]);
+
+  // ── Section-level structural operations ──
+  const handleSectionDuplicate = useCallback(async (sectionIndex: number) => {
+    const updatedMjml = duplicateSection(mjml, sectionIndex);
+    const compiled = await compileMjml(updatedMjml);
+    if (compiled) {
+      setMjml(compiled.mjml);
+      setHtmlContent(compiled.html);
+      editedHtmlRef.current = "";
+    }
+  }, [mjml]);
+
+  const handleSectionDelete = useCallback(async (sectionIndex: number) => {
+    const updatedMjml = removeSection(mjml, sectionIndex);
+    const compiled = await compileMjml(updatedMjml);
+    if (compiled) {
+      setMjml(compiled.mjml);
+      setHtmlContent(compiled.html);
+      editedHtmlRef.current = "";
+    }
+  }, [mjml]);
+
+  const handleSectionMove = useCallback(async (fromIndex: number, toIndex: number) => {
+    const updatedMjml = moveSection(mjml, fromIndex, toIndex);
+    const compiled = await compileMjml(updatedMjml);
+    if (compiled) {
+      setMjml(compiled.mjml);
+      setHtmlContent(compiled.html);
+      editedHtmlRef.current = "";
+    }
+  }, [mjml]);
 
   const handleLoadSample = () => {
     editedHtmlRef.current = "";
@@ -115,9 +220,14 @@ export default function Home() {
     });
 
     // Remove editor-specific classes
-    doc.querySelectorAll(".ag-selected, .ag-img-selected, .ag-ghost").forEach(el => {
-      el.classList.remove("ag-selected", "ag-img-selected", "ag-ghost");
+    doc.querySelectorAll(".ag-selected, .ag-img-selected, .ag-ghost, .ag-section-highlight").forEach(el => {
+      el.classList.remove("ag-selected", "ag-img-selected", "ag-ghost", "ag-section-highlight");
       if (el.className === "") el.removeAttribute("class");
+    });
+
+    // Remove data-section-index attributes
+    doc.querySelectorAll("[data-section-index]").forEach(el => {
+      el.removeAttribute("data-section-index");
     });
 
     // Return the cleaned HTML with standard doctype
@@ -225,6 +335,11 @@ export default function Home() {
           onExportHtml={handleExportHtml}
           onSaveTemplate={handleSaveToSupabase}
           onOpenHistory={() => setShowHistory(true)}
+          onSectionEdit={handleSectionEdit}
+          onSectionDuplicate={handleSectionDuplicate}
+          onSectionDelete={handleSectionDelete}
+          onSectionMove={handleSectionMove}
+          isSectionEditing={isSectionEditing}
         />
       </div>
       </main>

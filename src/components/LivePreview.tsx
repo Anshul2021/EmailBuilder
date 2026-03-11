@@ -133,6 +133,8 @@ export function LivePreview({ html, mjml, isLoading, loadingType = "generating",
 
     // Helper to inject styles and handle elements into the iframe
     const injectIframeStyles = useCallback((doc: Document) => {
+        if (!doc.head || !doc.body) return;
+
         const styleId = "ag-preview-styles";
         if (!doc.getElementById(styleId)) {
             const style = doc.createElement("style");

@@ -10,6 +10,8 @@ import { PropertiesPanel } from "./PropertiesPanel";
 import type { ElementProperties } from "./PropertiesPanel";
 import { SectionControls } from "./SectionControls";
 import { SectionEditBar } from "./SectionEditBar";
+import type { MjmlNode } from "@/lib/mjmlTree";
+import type { SectionEditState } from "./LayerPanel";
 
 interface LivePreviewProps {
     html: string;
@@ -27,6 +29,21 @@ interface LivePreviewProps {
     onSectionDelete?: (sectionIndex: number) => void;
     onSectionMove?: (fromIndex: number, toIndex: number) => void;
     isSectionEditing?: boolean;
+    // Layer panel props
+    mjmlTree: MjmlNode | null;
+    selectedLayerNodeId: string | null;
+    sectionEditStates: Map<string, SectionEditState>;
+    onLayerSelect: (nodeId: string) => void;
+    onLayerToggleExpand: (nodeId: string) => void;
+    onLayerToggleHidden: (nodeId: string) => void;
+    onLayerDelete: (nodeId: string) => void;
+    onLayerDuplicate: (nodeId: string) => void;
+    onLayerRename: (nodeId: string, newName: string) => void;
+    onLayerMove: (nodeId: string, targetId: string, position: "before" | "after" | "inside") => void;
+    onLayerAiEdit: (nodeId: string) => void;
+    // Bidirectional hover sync
+    hoveredLayerNodeId: string | null;
+    onLayerHover: (nodeId: string | null) => void;
 }
 
 const DEFAULT_PROPS: ElementProperties = {
@@ -70,9 +87,23 @@ export function LivePreview({
     onSectionDelete,
     onSectionMove,
     isSectionEditing = false,
+    // Layer panel
+    mjmlTree,
+    selectedLayerNodeId,
+    sectionEditStates,
+    onLayerSelect,
+    onLayerToggleExpand,
+    onLayerToggleHidden,
+    onLayerDelete,
+    onLayerDuplicate,
+    onLayerRename,
+    onLayerMove,
+    onLayerAiEdit,
+    hoveredLayerNodeId,
+    onLayerHover,
 }: LivePreviewProps) {
     const [viewMode, setViewMode] = useState<"desktop" | "mobile">("desktop");
-    const [showEditPanel, setShowEditPanel] = useState(false);
+    const [showEditPanel, setShowEditPanel] = useState(true);
     const [selectedProps, setSelectedProps] = useState<ElementProperties>(DEFAULT_PROPS);
     const [hasSelection, setHasSelection] = useState(false);
     const [copied, setCopied] = useState(false);
@@ -132,8 +163,64 @@ export function LivePreview({
     // Refs to avoid stale closures in iframe event listeners
     const onMjmlChangeRef = useRef(onMjmlChange);
     const mjmlRef = useRef(mjml);
+    const onLayerSelectRef = useRef(onLayerSelect);
+    const mjmlTreeRef = useRef(mjmlTree);
     useEffect(() => { onMjmlChangeRef.current = onMjmlChange; }, [onMjmlChange]);
     useEffect(() => { mjmlRef.current = mjml; }, [mjml]);
+    useEffect(() => { onLayerSelectRef.current = onLayerSelect; }, [onLayerSelect]);
+    useEffect(() => { mjmlTreeRef.current = mjmlTree; }, [mjmlTree]);
+
+    // ── Bidirectional layer ↔ preview highlight ──
+    // When hoveredLayerNodeId or selectedLayerNodeId changes, find the matching
+    // section in the iframe and highlight + scroll to it.
+    const highlightSectionRef = useRef<HTMLElement | null>(null);
+    useEffect(() => {
+        const targetNodeId = hoveredLayerNodeId || selectedLayerNodeId;
+        const iframe = iframeRef.current;
+        const doc = iframe?.contentDocument;
+        if (!doc) return;
+
+        // Clear previous highlight
+        if (highlightSectionRef.current) {
+            highlightSectionRef.current.classList.remove("ag-section-highlight");
+            highlightSectionRef.current = null;
+        }
+
+        if (!targetNodeId || !mjmlTree) return;
+
+        // Find section index from the tree node ID
+        // Walk body's children to find which section this node belongs to
+        const bodyNode = mjmlTree.children.find(c => c.type === "body") || mjmlTree;
+        const sections = bodyNode.children.filter(c => c.type === "section" && !c.isHidden);
+        let sectionIdx = -1;
+
+        // Check if the node IS a section
+        sectionIdx = sections.findIndex(s => s.id === targetNodeId);
+
+        // Or if the node is a child of a section
+        if (sectionIdx === -1) {
+            const findInChildren = (node: MjmlNode, id: string): boolean => {
+                if (node.id === id) return true;
+                return node.children.some(c => findInChildren(c, id));
+            };
+            sectionIdx = sections.findIndex(s => findInChildren(s, targetNodeId));
+        }
+
+        if (sectionIdx === -1) return;
+
+        // Find the element in the iframe by ag-section-N class or data-section-index
+        const el = doc.querySelector(`[data-section-index="${sectionIdx}"]`) as HTMLElement
+            || doc.querySelector(`.ag-section-${sectionIdx}`) as HTMLElement;
+
+        if (el) {
+            el.classList.add("ag-section-highlight");
+            highlightSectionRef.current = el;
+            // Scroll into view on selection (not hover to avoid jitter)
+            if (selectedLayerNodeId === targetNodeId) {
+                el.scrollIntoView({ behavior: "smooth", block: "center" });
+            }
+        }
+    }, [hoveredLayerNodeId, selectedLayerNodeId, mjmlTree]);
 
     // Helper to propagate iframe DOM changes to parent
     const propagateChanges = useCallback(() => {
@@ -326,25 +413,23 @@ export function LivePreview({
             doc.body.appendChild(indicator);
         }
 
-        // ──── Section index data attributes ────
-        // MJML compiles each <mj-section> into a table structure.
-        // We mark section wrapper elements with data-section-index for controls.
-        const sectionWrappers = doc.querySelectorAll('table[width="100%"]');
-        let sectionIdx = 0;
-        sectionWrappers.forEach((table) => {
-            const el = table as HTMLElement;
-            // Heuristic: top-level full-width tables inside the body wrapper are sections
-            const parent = el.parentElement;
-            if (parent && (parent.tagName === "DIV" || parent.tagName === "BODY" || parent.closest('[class*="body"]'))) {
-                // Check it's not a nested table inside another section
-                const closestSection = el.closest('[data-section-index]');
-                if (!closestSection) {
-                    el.setAttribute("data-section-index", String(sectionIdx));
-                    sectionIdx++;
-                }
+        // ──── Section detection via css-class markers ────
+        // The API route injects css-class="ag-section-N" on each <mj-section>
+        // before MJML compilation. The compiled HTML carries these classes
+        // on the section wrapper elements (td or div), making detection reliable.
+        const allElements = doc.querySelectorAll('[class*="ag-section-"]');
+        let maxIdx = -1;
+        allElements.forEach((el) => {
+            const classList = el.className || "";
+            const match = classList.match(/ag-section-(\d+)/);
+            if (match) {
+                const idx = parseInt(match[1], 10);
+                // Also set data-section-index for easy lookup
+                el.setAttribute("data-section-index", String(idx));
+                if (idx > maxIdx) maxIdx = idx;
             }
         });
-        setSectionCount(sectionIdx);
+        setSectionCount(maxIdx + 1);
     }, []);
 
     const updateResizeHandlePosition = useCallback(() => {
@@ -432,12 +517,23 @@ export function LivePreview({
     }, [saveVersion, applyHtmlToIframe]);
 
     // ── Section hover detection ──
+    // Walk up the DOM from the target element looking for an element
+    // with ag-section-N class (set by API route during MJML compilation).
     const findSectionFromElement = useCallback((target: HTMLElement): { element: HTMLElement; index: number } | null => {
         let el: HTMLElement | null = target;
         while (el) {
+            // Check data-section-index (set during injectIframeStyles)
             const idx = el.getAttribute("data-section-index");
             if (idx !== null) {
                 return { element: el, index: parseInt(idx, 10) };
+            }
+            // Also check css-class directly in case data attribute wasn't set yet
+            const classList = el.className || "";
+            if (typeof classList === "string") {
+                const match = classList.match(/ag-section-(\d+)/);
+                if (match) {
+                    return { element: el, index: parseInt(match[1], 10) };
+                }
             }
             el = el.parentElement;
         }
@@ -576,6 +672,21 @@ export function LivePreview({
                 }
                 setHoveredSectionIndex(null);
                 setSectionControlsPos(null);
+            }
+        });
+
+        // ── Preview click → select matching layer ──
+        doc.addEventListener("click", (e) => {
+            const target = e.target as HTMLElement;
+            const sectionInfo = findSectionFromElement(target);
+            if (sectionInfo && mjmlTreeRef.current && onLayerSelectRef.current) {
+                const tree = mjmlTreeRef.current;
+                const bodyNode = tree.children.find(c => c.type === "body") || tree;
+                const sections = bodyNode.children.filter(c => c.type === "section" && !c.isHidden);
+                const sectionNode = sections[sectionInfo.index];
+                if (sectionNode) {
+                    onLayerSelectRef.current(sectionNode.id);
+                }
             }
         });
 
@@ -1121,6 +1232,18 @@ export function LivePreview({
                                     onEnableTextEdit={enableTextEdit}
                                     onReplaceImage={handleReplaceImage}
                                     onClose={() => setShowEditPanel(false)}
+                                    mjmlTree={mjmlTree}
+                                    selectedLayerNodeId={selectedLayerNodeId}
+                                    sectionEditStates={sectionEditStates}
+                                    onLayerSelect={onLayerSelect}
+                                    onLayerHover={onLayerHover}
+                                    onLayerToggleExpand={onLayerToggleExpand}
+                                    onLayerToggleHidden={onLayerToggleHidden}
+                                    onLayerDelete={onLayerDelete}
+                                    onLayerDuplicate={onLayerDuplicate}
+                                    onLayerRename={onLayerRename}
+                                    onLayerMove={onLayerMove}
+                                    onLayerAiEdit={onLayerAiEdit}
                                 />
                             </div>
                         </motion.div>

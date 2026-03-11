@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useCallback } from "react";
+import { useState, useRef, useCallback, useEffect } from "react";
 import { PromptEditor } from "@/components/PromptEditor";
 import { LivePreview } from "@/components/LivePreview";
 import { useCredits } from "@/hooks/useCredits";
@@ -9,7 +9,14 @@ import { SAMPLE_TEMPLATE } from "@/lib/sampleTemplate";
 import { motion } from "framer-motion";
 import { HistoryPanel } from "@/components/HistoryPanel";
 import { saveTemplate, TemplateRecord } from "@/lib/supabaseService";
-import { getSection, replaceMjmlSection, duplicateSection, removeSection, moveSection } from "@/lib/mjmlParser";
+import { getSection, replaceMjmlSection } from "@/lib/mjmlParser";
+import {
+  parseMjmlToTree, treeToMjml,
+  toggleHidden, toggleExpanded, deleteNode, duplicateNode, renameNode, moveNode,
+  getVisibleSections, getBodyNode,
+  type MjmlNode,
+} from "@/lib/mjmlTree";
+import type { SectionEditState } from "@/components/LayerPanel";
 
 interface Message {
   role: "user" | "model";
@@ -29,8 +36,52 @@ export default function Home() {
   const [isSectionEditing, setIsSectionEditing] = useState(false);
   const { credits, totalCredits, percentage, deductCredits } = useCredits();
 
+  // ── MJML Tree State ──
+  const [mjmlTree, setMjmlTree] = useState<MjmlNode | null>(null);
+  const [selectedLayerNodeId, setSelectedLayerNodeId] = useState<string | null>(null);
+  const [hoveredLayerNodeId, setHoveredLayerNodeId] = useState<string | null>(null);
+  const [sectionEditStates, setSectionEditStates] = useState<Map<string, SectionEditState>>(new Map());
+
   // Ref to track live-edited HTML from the preview editor (avoids iframe reload)
   const editedHtmlRef = useRef<string>("");
+
+  // ── Build tree whenever MJML changes ──
+  useEffect(() => {
+    if (mjml) {
+      const tree = parseMjmlToTree(mjml);
+      setMjmlTree(tree);
+    } else {
+      setMjmlTree(null);
+    }
+  }, [mjml]);
+
+  // ── Compile MJML → HTML (no AI call) ──
+  const compileMjml = async (mjmlCode: string): Promise<{ html: string; mjml: string } | null> => {
+    try {
+      const resp = await fetch("/api/generate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ compileOnly: true, mjmlCode: mjmlCode }),
+      });
+      const data = await resp.json();
+      if (data.error) throw new Error(data.error);
+      return data;
+    } catch (err) {
+      console.error("MJML compile failed:", err);
+      return null;
+    }
+  };
+
+  // ── Helper: apply tree mutation → recompile ──
+  const applyTreeMutation = useCallback(async (newTree: MjmlNode) => {
+    const newMjml = treeToMjml(newTree);
+    const compiled = await compileMjml(newMjml);
+    if (compiled) {
+      setMjml(compiled.mjml);
+      setHtmlContent(compiled.html);
+      editedHtmlRef.current = "";
+    }
+  }, []);
 
   const handleGenerate = async (
     prompt: string,
@@ -75,24 +126,7 @@ export default function Home() {
     }
   };
 
-  // ── Compile MJML → HTML (no AI call) ──
-  const compileMjml = async (mjmlCode: string): Promise<{ html: string; mjml: string } | null> => {
-    try {
-      const resp = await fetch("/api/generate", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ compileOnly: true, mjmlCode: mjmlCode }),
-      });
-      const data = await resp.json();
-      if (data.error) throw new Error(data.error);
-      return data;
-    } catch (err) {
-      console.error("MJML compile failed:", err);
-      return null;
-    }
-  };
-
-  // ── Section-level AI editing ──
+  // ── Section-level AI editing (from preview controls) ──
   const handleSectionEdit = useCallback(async (instruction: string, sectionIndex: number) => {
     const sectionMjml = getSection(mjml, sectionIndex);
     if (!sectionMjml) {
@@ -103,25 +137,24 @@ export default function Home() {
     setIsSectionEditing(true);
     setErrorMsg(null);
 
+    // Set section edit state
+    const sections = mjmlTree ? getVisibleSections(mjmlTree) : [];
+    const sectionNode = sections[sectionIndex];
+    if (sectionNode) {
+      setSectionEditStates(prev => new Map(prev).set(sectionNode.id, "processing"));
+    }
+
     try {
-      // Call section-only AI endpoint
       const resp = await fetch("/api/generate-section", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          sectionMjml,
-          instruction,
-          model: "gemini-2.5-flash",
-        }),
+        body: JSON.stringify({ sectionMjml, instruction, model: "gemini-2.5-flash" }),
       });
 
       const data = await resp.json();
       if (data.error) throw new Error(data.error);
 
-      // Patch the section into the full MJML
       const updatedMjml = replaceMjmlSection(mjml, sectionIndex, data.sectionMjml);
-
-      // Recompile full template
       const compiled = await compileMjml(updatedMjml);
       if (!compiled) throw new Error("Failed to recompile template after section edit.");
 
@@ -129,54 +162,122 @@ export default function Home() {
       setHtmlContent(compiled.html);
       editedHtmlRef.current = "";
 
-      // Track in messages for context
       setMessages(prev => [
         ...prev,
         { role: "user", text: `[Section ${sectionIndex + 1}] ${instruction}` } as Message,
         { role: "model", text: `Section ${sectionIndex + 1} updated.` } as Message,
       ]);
 
-      // Section edits cost less (approx 20% of full generation)
       deductCredits(Math.floor(data.sectionMjml.length / 5));
+
+      if (sectionNode) {
+        setSectionEditStates(prev => new Map(prev).set(sectionNode.id, "success"));
+        setTimeout(() => setSectionEditStates(prev => { const m = new Map(prev); m.delete(sectionNode.id); return m; }), 2000);
+      }
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : "Section edit failed.";
       console.error("Section edit failed:", message);
       setErrorMsg(message);
+      if (sectionNode) {
+        setSectionEditStates(prev => new Map(prev).set(sectionNode.id, "error"));
+        setTimeout(() => setSectionEditStates(prev => { const m = new Map(prev); m.delete(sectionNode.id); return m; }), 3000);
+      }
     } finally {
       setIsSectionEditing(false);
     }
-  }, [mjml, deductCredits]);
+  }, [mjml, mjmlTree, deductCredits]);
 
-  // ── Section-level structural operations ──
+  // ── Section structural operations (from preview) ──
   const handleSectionDuplicate = useCallback(async (sectionIndex: number) => {
-    const updatedMjml = duplicateSection(mjml, sectionIndex);
-    const compiled = await compileMjml(updatedMjml);
-    if (compiled) {
-      setMjml(compiled.mjml);
-      setHtmlContent(compiled.html);
-      editedHtmlRef.current = "";
+    if (!mjmlTree) return;
+    const sections = getVisibleSections(mjmlTree);
+    const sectionNode = sections[sectionIndex];
+    if (sectionNode) {
+      const newTree = duplicateNode(mjmlTree, sectionNode.id);
+      await applyTreeMutation(newTree);
     }
-  }, [mjml]);
+  }, [mjmlTree, applyTreeMutation]);
 
   const handleSectionDelete = useCallback(async (sectionIndex: number) => {
-    const updatedMjml = removeSection(mjml, sectionIndex);
-    const compiled = await compileMjml(updatedMjml);
-    if (compiled) {
-      setMjml(compiled.mjml);
-      setHtmlContent(compiled.html);
-      editedHtmlRef.current = "";
+    if (!mjmlTree) return;
+    const sections = getVisibleSections(mjmlTree);
+    const sectionNode = sections[sectionIndex];
+    if (sectionNode) {
+      const newTree = deleteNode(mjmlTree, sectionNode.id);
+      await applyTreeMutation(newTree);
     }
-  }, [mjml]);
+  }, [mjmlTree, applyTreeMutation]);
 
   const handleSectionMove = useCallback(async (fromIndex: number, toIndex: number) => {
-    const updatedMjml = moveSection(mjml, fromIndex, toIndex);
-    const compiled = await compileMjml(updatedMjml);
-    if (compiled) {
-      setMjml(compiled.mjml);
-      setHtmlContent(compiled.html);
-      editedHtmlRef.current = "";
+    if (!mjmlTree) return;
+    const body = getBodyNode(mjmlTree);
+    if (!body) return;
+    const sections = getVisibleSections(mjmlTree);
+    const sourceNode = sections[fromIndex];
+    const targetNode = sections[toIndex];
+    if (sourceNode && targetNode) {
+      const position = toIndex > fromIndex ? "after" : "before";
+      const newTree = moveNode(mjmlTree, sourceNode.id, targetNode.id, position);
+      await applyTreeMutation(newTree);
     }
-  }, [mjml]);
+  }, [mjmlTree, applyTreeMutation]);
+
+  // ── Layer Panel Callbacks ──
+  const handleLayerSelect = useCallback((nodeId: string) => {
+    setSelectedLayerNodeId(nodeId);
+  }, []);
+
+  const handleLayerHover = useCallback((nodeId: string | null) => {
+    setHoveredLayerNodeId(nodeId);
+  }, []);
+
+  const handleLayerToggleExpand = useCallback((nodeId: string) => {
+    if (!mjmlTree) return;
+    setMjmlTree(toggleExpanded(mjmlTree, nodeId));
+  }, [mjmlTree]);
+
+  const handleLayerToggleHidden = useCallback(async (nodeId: string) => {
+    if (!mjmlTree) return;
+    const newTree = toggleHidden(mjmlTree, nodeId);
+    await applyTreeMutation(newTree);
+  }, [mjmlTree, applyTreeMutation]);
+
+  const handleLayerDelete = useCallback(async (nodeId: string) => {
+    if (!mjmlTree) return;
+    const newTree = deleteNode(mjmlTree, nodeId);
+    await applyTreeMutation(newTree);
+  }, [mjmlTree, applyTreeMutation]);
+
+  const handleLayerDuplicate = useCallback(async (nodeId: string) => {
+    if (!mjmlTree) return;
+    const newTree = duplicateNode(mjmlTree, nodeId);
+    await applyTreeMutation(newTree);
+  }, [mjmlTree, applyTreeMutation]);
+
+  const handleLayerRename = useCallback((nodeId: string, newName: string) => {
+    if (!mjmlTree) return;
+    setMjmlTree(renameNode(mjmlTree, nodeId, newName));
+  }, [mjmlTree]);
+
+  const handleLayerMove = useCallback(async (nodeId: string, targetId: string, position: "before" | "after" | "inside") => {
+    if (!mjmlTree) return;
+    const newTree = moveNode(mjmlTree, nodeId, targetId, position);
+    await applyTreeMutation(newTree);
+  }, [mjmlTree, applyTreeMutation]);
+
+  const handleLayerAiEdit = useCallback((nodeId: string) => {
+    if (!mjmlTree) return;
+    // Find which section index this node belongs to
+    const sections = getVisibleSections(mjmlTree);
+    const sectionIdx = sections.findIndex(s => s.id === nodeId);
+    if (sectionIdx === -1) return;
+
+    // Open the section edit prompt
+    const instruction = window.prompt(`Edit Section "${sections[sectionIdx].name}":\nDescribe what changes to make:`);
+    if (!instruction) return;
+
+    handleSectionEdit(instruction, sectionIdx);
+  }, [mjmlTree, handleSectionEdit]);
 
   const handleLoadSample = () => {
     editedHtmlRef.current = "";
@@ -201,36 +302,28 @@ export default function Home() {
     const parser = new DOMParser();
     const doc = parser.parseFromString(htmlStr, "text/html");
 
-    // Remove injected editor handles and styles
     const elementsToRemove = [
-      "ag-preview-styles",
-      "ag-resize-handle",
-      "ag-drag-handle",
-      "ag-delete-handle",
-      "ag-drop-indicator"
+      "ag-preview-styles", "ag-resize-handle", "ag-drag-handle",
+      "ag-delete-handle", "ag-drop-indicator"
     ];
     elementsToRemove.forEach(id => {
       const el = doc.getElementById(id);
       if (el) el.remove();
     });
 
-    // Remove contenteditable attributes
     doc.querySelectorAll('[contenteditable="true"]').forEach(el => {
       el.removeAttribute("contenteditable");
     });
 
-    // Remove editor-specific classes
     doc.querySelectorAll(".ag-selected, .ag-img-selected, .ag-ghost, .ag-section-highlight").forEach(el => {
       el.classList.remove("ag-selected", "ag-img-selected", "ag-ghost", "ag-section-highlight");
       if (el.className === "") el.removeAttribute("class");
     });
 
-    // Remove data-section-index attributes
     doc.querySelectorAll("[data-section-index]").forEach(el => {
       el.removeAttribute("data-section-index");
     });
 
-    // Return the cleaned HTML with standard doctype
     return `<!doctype html>\n${doc.documentElement.outerHTML}`;
   };
 
@@ -258,7 +351,7 @@ export default function Home() {
     }
 
     const title = prompt("Enter a name for this template:", "New Template");
-    if (title === null) return; // cancelled
+    if (title === null) return;
 
     setLoadingType("saving");
     setLoading(true);
@@ -340,6 +433,20 @@ export default function Home() {
           onSectionDelete={handleSectionDelete}
           onSectionMove={handleSectionMove}
           isSectionEditing={isSectionEditing}
+          // Layer panel props
+          mjmlTree={mjmlTree}
+          selectedLayerNodeId={selectedLayerNodeId}
+          sectionEditStates={sectionEditStates}
+          onLayerSelect={handleLayerSelect}
+          onLayerHover={handleLayerHover}
+          onLayerToggleExpand={handleLayerToggleExpand}
+          onLayerToggleHidden={handleLayerToggleHidden}
+          onLayerDelete={handleLayerDelete}
+          onLayerDuplicate={handleLayerDuplicate}
+          onLayerRename={handleLayerRename}
+          onLayerMove={handleLayerMove}
+          onLayerAiEdit={handleLayerAiEdit}
+          hoveredLayerNodeId={hoveredLayerNodeId}
         />
       </div>
       </main>

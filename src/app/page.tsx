@@ -9,7 +9,6 @@ import { SAMPLE_TEMPLATE } from "@/lib/sampleTemplate";
 import { motion } from "framer-motion";
 import { HistoryPanel } from "@/components/HistoryPanel";
 import { saveTemplate, TemplateRecord } from "@/lib/supabaseService";
-import { Save, History } from "lucide-react";
 
 interface Message {
   role: "user" | "model";
@@ -93,10 +92,43 @@ export default function Home() {
     }
   };
 
+  const cleanHtmlForExport = (htmlStr: string): string => {
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(htmlStr, "text/html");
+
+    // Remove injected editor handles and styles
+    const elementsToRemove = [
+      "ag-preview-styles",
+      "ag-resize-handle",
+      "ag-drag-handle",
+      "ag-delete-handle",
+      "ag-drop-indicator"
+    ];
+    elementsToRemove.forEach(id => {
+      const el = doc.getElementById(id);
+      if (el) el.remove();
+    });
+
+    // Remove contenteditable attributes
+    doc.querySelectorAll('[contenteditable="true"]').forEach(el => {
+      el.removeAttribute("contenteditable");
+    });
+
+    // Remove editor-specific classes
+    doc.querySelectorAll(".ag-selected, .ag-img-selected, .ag-ghost").forEach(el => {
+      el.classList.remove("ag-selected", "ag-img-selected", "ag-ghost");
+      if (el.className === "") el.removeAttribute("class");
+    });
+
+    // Return the cleaned HTML with standard doctype
+    return `<!doctype html>\n${doc.documentElement.outerHTML}`;
+  };
+
   const handleExportHtml = () => {
     const content = editedHtmlRef.current || htmlContent;
     if (content) {
-      const blob = new Blob([content], { type: "text/html" });
+      const cleanedContent = cleanHtmlForExport(content);
+      const blob = new Blob([cleanedContent], { type: "text/html" });
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
@@ -121,11 +153,13 @@ export default function Home() {
     setLoadingType("saving");
     setLoading(true);
     try {
-      await saveTemplate(title, mjml, content);
+      const cleanedContent = cleanHtmlForExport(content);
+      await saveTemplate(title, mjml, cleanedContent);
       alert("Template saved successfully!");
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error(err);
-      alert(`Failed to save template: ${err.message || "Ensure Database is configured and RLS policies allow inserts."}`);
+      const errorMessage = err instanceof Error ? err.message : "Ensure Database is configured and RLS policies allow inserts.";
+      alert(`Failed to save template: ${errorMessage}`);
     } finally {
       setLoading(false);
     }

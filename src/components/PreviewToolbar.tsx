@@ -20,6 +20,7 @@ interface PreviewToolbarProps {
     onOpenHistory?: () => void;
     onSaveTemplate?: () => void;
     onExportHtml: () => void;
+    onAddText: () => void;
 }
 
 export function PreviewToolbar({
@@ -37,7 +38,8 @@ export function PreviewToolbar({
     onCopyMjml,
     onOpenHistory,
     onSaveTemplate,
-    onExportHtml
+    onExportHtml,
+    onAddText
 }: PreviewToolbarProps) {
     return (
         <div className="border-b border-slate-200 bg-white flex items-center justify-between px-5 shrink-0 shadow-sm" style={{ height: 52 }}>
@@ -81,6 +83,19 @@ export function PreviewToolbar({
                         </button>
                     </Tooltip>
                 )}
+
+                <div className="w-px h-5 bg-slate-200" />
+
+                <Tooltip content="Add New Text Block">
+                    <button
+                        onClick={onAddText}
+                        disabled={!html}
+                        className="flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg text-slate-500 hover:bg-slate-100 border border-transparent transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+                    >
+                        <PencilLine className="w-3.5 h-3.5" />
+                        Add Text
+                    </button>
+                </Tooltip>
 
                 <div className="w-px h-5 bg-slate-200" />
 

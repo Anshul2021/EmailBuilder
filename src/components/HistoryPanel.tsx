@@ -105,7 +105,7 @@ export function HistoryPanel({ onClose, onSelect }: HistoryPanelProps) {
                           onChange={(e) => setEditName(e.target.value)}
                           className="flex-1 text-sm border border-violet-300 rounded px-2 py-1 outline-none focus:ring-2 focus:ring-violet-200"
                           autoFocus
-                          onKeyDown={(e) => e.key === 'Enter' && handleSaveEdit(e as any, t)}
+                          onKeyDown={(e) => e.key === 'Enter' && handleSaveEdit(e as unknown as React.MouseEvent, t)}
                         />
                         <button onClick={(e) => handleSaveEdit(e, t)} className="p-1.5 bg-violet-100 text-violet-700 rounded hover:bg-violet-200">
                           <Check className="w-3.5 h-3.5" />

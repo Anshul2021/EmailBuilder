@@ -2,14 +2,13 @@
 "use client";
 
 import { useState, useRef, useCallback, useEffect } from "react";
-import { Monitor, Smartphone, MailOpen, AlignLeft, AlignCenter, AlignRight, Bold, Copy, Download, PencilLine, Check, ImageIcon, X, Upload, Undo2, Redo2, RotateCcw, Save, History } from "lucide-react";
-import { clsx } from "clsx";
-import { Tooltip } from "./UI/Tooltip";
-import { motion, AnimatePresence } from "framer-motion";
-import { PropertiesPanel } from "./PropertiesPanel";
-import type { ElementProperties } from "./PropertiesPanel";
 import { Skeleton } from "primereact/skeleton";
 import { PreviewToolbar } from "./PreviewToolbar";
+import { clsx } from "clsx";
+import { motion, AnimatePresence } from "framer-motion";
+import { MailOpen } from "lucide-react";
+import { PropertiesPanel } from "./PropertiesPanel";
+import type { ElementProperties } from "./PropertiesPanel";
 
 interface LivePreviewProps {
     html: string;
@@ -479,11 +478,10 @@ const deleteHandle = doc.getElementById("ag-delete-handle");
                 
                 selectedElementRef.current.style.opacity = "0.3";
                 
-                doc.body.appendChild(ghost);
                 ghostElementRef.current = ghost;
-                
-                (ghost as any)._offsetX = offsetX;
-                (ghost as any)._offsetY = offsetY;
+
+                (ghost as unknown as { _offsetX: number })._offsetX = offsetX;
+                (ghost as unknown as { _offsetY: number })._offsetY = offsetY;
                 return;
             }
 
@@ -579,8 +577,8 @@ const deleteHandle = doc.getElementById("ag-delete-handle");
                 e.preventDefault();
                 
                 const ghost = ghostElementRef.current;
-                const offsetX = (ghost as any)._offsetX || 0;
-                const offsetY = (ghost as any)._offsetY || 0;
+                const offsetX = (ghost as unknown as { _offsetX: number })._offsetX || 0;
+                const offsetY = (ghost as unknown as { _offsetY: number })._offsetY || 0;
                 
                 ghost.style.left = `${e.clientX - offsetX}px`;
                 ghost.style.top = `${e.clientY - offsetY}px`;
@@ -684,7 +682,7 @@ const deleteHandle = doc.getElementById("ag-delete-handle");
         // Polling update for layout shifts
         const interval = setInterval(updateResizeHandlePosition, 500);
         return () => clearInterval(interval);
-    }, [injectIframeStyles, updateResizeHandlePosition, propagateChanges]);
+    }, [injectIframeStyles, updateResizeHandlePosition, propagateChanges, undo, redo, saveVersion]);
 
     // Re-inject styles and reposition handle when html changes
     useEffect(() => {
@@ -777,6 +775,46 @@ const deleteHandle = doc.getElementById("ag-delete-handle");
         if (imageInputRef.current) imageInputRef.current.value = "";
     };
 
+    // Handle adding a new text block
+    const handleAddText = useCallback(() => {
+        const doc = iframeRef.current?.contentDocument;
+        if (!doc) return;
+
+        saveVersion(doc.documentElement.outerHTML);
+
+        const newBlock = doc.createElement("div");
+        newBlock.innerHTML = "New Text Block. Click to edit.";
+        newBlock.style.padding = "10px";
+        newBlock.style.color = "#1e293b";
+        newBlock.style.fontSize = "16px";
+        newBlock.style.fontFamily = "sans-serif";
+        newBlock.style.textAlign = "left";
+
+        const selected = selectedElementRef.current;
+        if (selected && selected.parentNode && selected.tagName !== "BODY" && selected.tagName !== "HTML") {
+            // Insert after selected element
+            if (selected.nextSibling) {
+                selected.parentNode.insertBefore(newBlock, selected.nextSibling);
+            } else {
+                selected.parentNode.appendChild(newBlock);
+            }
+        } else {
+            // Fallback: append to the end of the body or a master container
+            const container = doc.querySelector("body > div") || doc.body;
+            container.appendChild(newBlock);
+        }
+
+        // Auto-select the new block safely
+        setTimeout(() => {
+            const clickEvent = new MouseEvent("mousedown", { bubbles: true, cancelable: true, view: iframeRef.current?.contentWindow });
+            newBlock.dispatchEvent(clickEvent);
+            // Optionally auto-scroll to it
+            newBlock.scrollIntoView({ behavior: "smooth", block: "center" });
+        }, 100);
+
+        propagateChanges();
+    }, [saveVersion, propagateChanges]);
+
     const handleCopyMjml = () => {
         onCopyMjml();
         setCopied(true);
@@ -828,6 +866,7 @@ const deleteHandle = doc.getElementById("ag-delete-handle");
                 onOpenHistory={onOpenHistory}
                 onSaveTemplate={onSaveTemplate}
                 onExportHtml={onExportHtml}
+                onAddText={handleAddText}
             />
             {/* ── Content row ── */}
             <div className="flex flex-1 min-h-0">

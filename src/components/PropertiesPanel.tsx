@@ -3,7 +3,6 @@
 import { PanelRight, Type, PencilLine, ImageIcon, X, Maximize2, CornerUpRight, Trash2, Upload } from "lucide-react";
 import { RichTextEditor } from "./UI/RichTextEditor";
 import { Tooltip } from "./UI/Tooltip";
-import { clsx } from "clsx";
 
 export interface ElementProperties {
     // Text props

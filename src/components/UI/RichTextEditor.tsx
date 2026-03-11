@@ -40,7 +40,11 @@ export function RichTextEditor({ value, onChange, placeholder, className, ...res
         <div className={`p-fluid modern-quill-editor ${className || ''}`}>
             <Editor
                 value={value}
-                onTextChange={(e) => onChange(e.htmlValue)}
+                onTextChange={(e) => {
+                    if (e.source === 'user') {
+                        onChange(e.htmlValue);
+                    }
+                }}
                 placeholder={placeholder}
                 style={{ height: '320px' }}
                 {...rest}

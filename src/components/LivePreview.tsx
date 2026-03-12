@@ -57,13 +57,14 @@ const DEFAULT_PROPS: ElementProperties = {
     isImage: false,
     width: 100,
     borderRadius: 0,
+    backgroundColor: "#ffffff",
 };
 
-function rgbToHex(rgb: string): string {
-    if (!rgb || rgb === "rgba(0, 0, 0, 0)") return "#1e293b";
+function rgbToHex(rgb: string, defaultColor = "#1e293b"): string {
+    if (!rgb || rgb === "rgba(0, 0, 0, 0)") return defaultColor;
     if (rgb.startsWith("#")) return rgb;
     const m = rgb.match(/^rgba?\((\d+),\s*(\d+),\s*(\d+)/);
-    if (!m) return "#1e293b";
+    if (!m) return defaultColor;
     return "#" + [m[1], m[2], m[3]].map(n => parseInt(n).toString(16).padStart(2, "0")).join("");
 }
 
@@ -241,6 +242,7 @@ export function LivePreview({
             if (props.fontSize) el.style.fontSize = `${props.fontSize}px`;
             if (props.fontWeight) el.style.fontWeight = props.fontWeight;
             if (props.color) el.style.color = props.color;
+            if (props.backgroundColor) el.style.backgroundColor = props.backgroundColor;
             if (props.align) el.style.textAlign = props.align;
             if (props.fontFamily) el.style.fontFamily = props.fontFamily;
         }
@@ -796,7 +798,8 @@ export function LivePreview({
                     isImage: false,
                     fontSize: parseInt(cs.fontSize) || 16,
                     fontWeight: cs.fontWeight === "700" || cs.fontWeight === "bold" ? "bold" : "normal",
-                    color: rgbToHex(cs.color) || "#1e293b",
+                    color: rgbToHex(cs.color),
+                    backgroundColor: rgbToHex(cs.backgroundColor, "#ffffff"),
                     align: (["left", "center", "right"].includes(align) ? align : "left") as "left" | "center" | "right",
                     fontFamily: cs.fontFamily || "",
                     content: target.innerHTML || target.textContent || "",
@@ -906,6 +909,7 @@ export function LivePreview({
                     if (prop.fontSize !== undefined) el.style.fontSize = `${next.fontSize}px`;
                     if (prop.fontWeight !== undefined) el.style.fontWeight = next.fontWeight;
                     if (prop.color !== undefined) el.style.color = next.color;
+                    if (prop.backgroundColor !== undefined) el.style.backgroundColor = next.backgroundColor;
                     if (prop.align !== undefined) {
                         el.style.textAlign = next.align;
                         if (el.hasAttribute("align")) el.setAttribute("align", next.align);

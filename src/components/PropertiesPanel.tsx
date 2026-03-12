@@ -12,6 +12,7 @@ export interface ElementProperties {
     fontSize: number;
     fontWeight: "normal" | "bold";
     color: string;
+    backgroundColor: string;
     align: "left" | "center" | "right";
     fontFamily: string;
     content: string;
@@ -225,7 +226,7 @@ export function PropertiesPanel({
                                         </div>
                                         <div>
                                             <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block mb-2">
-                                                Color
+                                                Text Color
                                             </label>
                                             <div className="flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-lg p-1.5">
                                                 <div className="w-6 h-6 rounded border border-slate-300 overflow-hidden shrink-0">
@@ -237,6 +238,22 @@ export function PropertiesPanel({
                                                     />
                                                 </div>
                                                 <span className="text-[10px] font-mono text-slate-500 uppercase">{selectedProps.color}</span>
+                                            </div>
+                                        </div>
+                                        <div>
+                                            <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block mb-2">
+                                                Background
+                                            </label>
+                                            <div className="flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-lg p-1.5">
+                                                <div className="w-6 h-6 rounded border border-slate-300 overflow-hidden shrink-0">
+                                                    <input
+                                                        type="color"
+                                                        value={selectedProps.backgroundColor}
+                                                        onChange={(e) => onApplyStyle({ backgroundColor: e.target.value })}
+                                                        className="w-10 h-10 -m-2 cursor-pointer border-0 p-0 bg-transparent"
+                                                    />
+                                                </div>
+                                                <span className="text-[10px] font-mono text-slate-500 uppercase">{selectedProps.backgroundColor === "#ffffff" ? "None" : selectedProps.backgroundColor}</span>
                                             </div>
                                         </div>
                                     </div>

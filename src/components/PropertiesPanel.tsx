@@ -1,31 +1,61 @@
 "use client";
 
 import { useState } from "react";
-import { Type, PencilLine, ImageIcon, X, Maximize2, CornerUpRight, Trash2, Upload, Layers, SlidersHorizontal } from "lucide-react";
+import { Type, PencilLine, ImageIcon, X, Maximize2, CornerUpRight, Trash2, Upload, Layers, SlidersHorizontal, Palette } from "lucide-react";
 import { RichTextEditor } from "./UI/RichTextEditor";
 import { Tooltip } from "./UI/Tooltip";
 import { LayerPanel, SectionEditState } from "./LayerPanel";
 import type { MjmlNode } from "@/lib/mjmlTree";
+import { DesignTab } from "./DesignTab";
 
 export interface ElementProperties {
     // Text props
-    fontSize: number;
-    fontWeight: "normal" | "bold";
+    fontSize: number | string;
+    fontWeight: string;
     color: string;
     backgroundColor: string;
-    align: "left" | "center" | "right";
+    align: "left" | "center" | "right" | "justify" | string;
     fontFamily: string;
     content: string;
     elementTag: string;
     
     // Image props
     isImage?: boolean;
-    width?: number;
+    width?: number | string;
     borderRadius?: number;
     src?: string;
+
+    // Design tab props
+    letterSpacing?: string;
+    lineHeight?: string;
+    textDecoration?: string;
+    fontStyle?: string;
+    verticalAlign?: string;
+    textShadow?: string;
+    
+    // Space
+    paddingTop?: string;
+    paddingRight?: string;
+    paddingBottom?: string;
+    paddingLeft?: string;
+    
+    // Decorations
+    backgroundImage?: string;
+    backgroundPosition?: string;
+    backgroundRepeat?: string;
+    backgroundSize?: string;
+    containerBackgroundColor?: string;
+    innerBackgroundColor?: string;
+
+    // Borders
+    borderWidth?: string;
+    borderStyle?: string;
+    borderColor?: string;
+
+    height?: string;
 }
 
-type PanelMode = "layers" | "properties";
+type PanelMode = "layers" | "properties" | "design";
 
 interface PropertiesPanelProps {
     hasSelection: boolean;
@@ -103,6 +133,17 @@ export function PropertiesPanel({
                         >
                             <SlidersHorizontal className="w-3.5 h-3.5" />
                             Properties
+                        </button>
+                        <button
+                            onClick={() => setMode("design")}
+                            className={`flex items-center gap-1.5 text-[11px] font-semibold px-3 py-1.5 rounded-md transition-all ${
+                                mode === "design"
+                                    ? "bg-white text-violet-700 shadow-sm"
+                                    : "text-slate-500 hover:text-slate-700"
+                            }`}
+                        >
+                            <Palette className="w-3.5 h-3.5" />
+                            Design
                         </button>
                     </div>
                     <button
@@ -340,6 +381,15 @@ export function PropertiesPanel({
                         </div>
                     )}
                 </>
+            )}
+
+            {/* ── Design Mode ── */}
+            {mode === "design" && (
+                <DesignTab 
+                    hasSelection={hasSelection} 
+                    selectedProps={selectedProps} 
+                    onApplyStyle={onApplyStyle} 
+                />
             )}
         </div>
     );

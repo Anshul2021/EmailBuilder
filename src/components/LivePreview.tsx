@@ -58,6 +58,30 @@ const DEFAULT_PROPS: ElementProperties = {
     width: 100,
     borderRadius: 0,
     backgroundColor: "#ffffff",
+    letterSpacing: "normal",
+    lineHeight: "normal",
+    textDecoration: "none",
+    fontStyle: "normal",
+    verticalAlign: "baseline",
+    textShadow: "",
+    
+    paddingTop: "0",
+    paddingRight: "0",
+    paddingBottom: "0",
+    paddingLeft: "0",
+
+    backgroundImage: "none",
+    backgroundPosition: "auto",
+    backgroundRepeat: "repeat",
+    backgroundSize: "auto",
+    containerBackgroundColor: "none",
+    innerBackgroundColor: "none",
+
+    borderWidth: "0",
+    borderStyle: "solid",
+    borderColor: "black",
+
+    height: "",
 };
 
 function rgbToHex(rgb: string, defaultColor = "#1e293b"): string {
@@ -237,14 +261,39 @@ export function LivePreview({
                 img.style.width = `${props.width}%`;
                 img.setAttribute("width", `${props.width}%`);
             }
-            if (props.borderRadius !== undefined) img.style.borderRadius = `${props.borderRadius}px`;
+            if (props.borderRadius !== undefined) img.style.borderRadius = typeof props.borderRadius === 'number' ? `${props.borderRadius}px` : (props.borderRadius || "");
         } else {
-            if (props.fontSize) el.style.fontSize = `${props.fontSize}px`;
+            if (props.fontSize) el.style.fontSize = typeof props.fontSize === 'number' ? `${props.fontSize}px` : props.fontSize;
             if (props.fontWeight) el.style.fontWeight = props.fontWeight;
             if (props.color) el.style.color = props.color;
             if (props.backgroundColor) el.style.backgroundColor = props.backgroundColor;
             if (props.align) el.style.textAlign = props.align;
             if (props.fontFamily) el.style.fontFamily = props.fontFamily;
+            if (props.letterSpacing) el.style.letterSpacing = props.letterSpacing;
+            if (props.lineHeight) el.style.lineHeight = props.lineHeight;
+            if (props.textDecoration) el.style.textDecoration = props.textDecoration;
+            if (props.fontStyle) el.style.fontStyle = props.fontStyle;
+            if (props.verticalAlign) el.style.verticalAlign = props.verticalAlign;
+            if (props.textShadow) el.style.textShadow = props.textShadow;
+            
+            if (props.paddingTop) el.style.paddingTop = props.paddingTop;
+            if (props.paddingRight) el.style.paddingRight = props.paddingRight;
+            if (props.paddingBottom) el.style.paddingBottom = props.paddingBottom;
+            if (props.paddingLeft) el.style.paddingLeft = props.paddingLeft;
+
+            if (props.backgroundImage && props.backgroundImage !== "none") el.style.backgroundImage = `url(${props.backgroundImage})`;
+            else if (props.backgroundImage === "none") el.style.backgroundImage = "none";
+            
+            if (props.backgroundPosition) el.style.backgroundPosition = props.backgroundPosition;
+            if (props.backgroundRepeat) el.style.backgroundRepeat = props.backgroundRepeat;
+            if (props.backgroundSize) el.style.backgroundSize = props.backgroundSize;
+
+            if (props.borderRadius !== undefined) el.style.borderRadius = typeof props.borderRadius === 'number' ? `${props.borderRadius}px` : (props.borderRadius || "");
+            if (props.borderWidth) el.style.borderWidth = props.borderWidth;
+            if (props.borderStyle) el.style.borderStyle = props.borderStyle;
+            if (props.borderColor) el.style.borderColor = props.borderColor;
+
+            if (props.height) el.style.height = props.height;
         }
     }, []);
 
@@ -796,12 +845,34 @@ export function LivePreview({
                 setSelectedProps({
                     ...DEFAULT_PROPS,
                     isImage: false,
-                    fontSize: parseInt(cs.fontSize) || 16,
-                    fontWeight: cs.fontWeight === "700" || cs.fontWeight === "bold" ? "bold" : "normal",
+                    fontSize: cs.fontSize || 16,
+                    fontWeight: cs.fontWeight === "700" || cs.fontWeight === "bold" ? "bold" : cs.fontWeight || "normal",
                     color: rgbToHex(cs.color),
                     backgroundColor: rgbToHex(cs.backgroundColor, "#ffffff"),
-                    align: (["left", "center", "right"].includes(align) ? align : "left") as "left" | "center" | "right",
+                    align: (["left", "center", "right", "justify"].includes(align) ? align : "left") as "left" | "center" | "right" | "justify",
                     fontFamily: cs.fontFamily || "",
+                    letterSpacing: cs.letterSpacing || "normal",
+                    lineHeight: cs.lineHeight || "normal",
+                    textDecoration: cs.textDecorationLine || "none",
+                    fontStyle: cs.fontStyle || "normal",
+                    verticalAlign: cs.verticalAlign || "baseline",
+                    textShadow: cs.textShadow || "none",
+                    
+                    paddingTop: cs.paddingTop || "0",
+                    paddingRight: cs.paddingRight || "0",
+                    paddingBottom: cs.paddingBottom || "0",
+                    paddingLeft: cs.paddingLeft || "0",
+
+                    backgroundImage: cs.backgroundImage === "none" ? "none" : cs.backgroundImage.replace(/^url\(["']?/, "").replace(/["']?\)$/, ""),
+                    backgroundPosition: cs.backgroundPosition || "auto",
+                    backgroundRepeat: cs.backgroundRepeat || "repeat",
+                    backgroundSize: cs.backgroundSize || "auto",
+
+                    borderWidth: cs.borderWidth || "0",
+                    borderStyle: cs.borderStyle || "solid",
+                    borderColor: rgbToHex(cs.borderColor) || "black",
+
+                    height: cs.height || "",
                     content: target.innerHTML || target.textContent || "",
                     elementTag: target.tagName.toLowerCase(),
                 });
@@ -903,10 +974,10 @@ export function LivePreview({
                         img.style.width = `${next.width}%`;
                         img.setAttribute("width", `${next.width}%`);
                     }
-                    if (prop.borderRadius !== undefined) img.style.borderRadius = `${next.borderRadius}px`;
+                    if (prop.borderRadius !== undefined) img.style.borderRadius = typeof next.borderRadius === 'number' ? `${next.borderRadius}px` : (next.borderRadius || "");
                     setTimeout(updateResizeHandlePosition, 0);
                 } else {
-                    if (prop.fontSize !== undefined) el.style.fontSize = `${next.fontSize}px`;
+                    if (prop.fontSize !== undefined) el.style.fontSize = typeof next.fontSize === 'number' ? `${next.fontSize}px` : next.fontSize;
                     if (prop.fontWeight !== undefined) el.style.fontWeight = next.fontWeight;
                     if (prop.color !== undefined) el.style.color = next.color;
                     if (prop.backgroundColor !== undefined) el.style.backgroundColor = next.backgroundColor;
@@ -914,6 +985,36 @@ export function LivePreview({
                         el.style.textAlign = next.align;
                         if (el.hasAttribute("align")) el.setAttribute("align", next.align);
                     }
+                    if (prop.fontFamily !== undefined) el.style.fontFamily = next.fontFamily;
+                    if (prop.letterSpacing !== undefined) el.style.letterSpacing = next.letterSpacing || "";
+                    if (prop.lineHeight !== undefined) el.style.lineHeight = next.lineHeight || "";
+                    if (prop.textDecoration !== undefined) el.style.textDecoration = next.textDecoration || "";
+                    if (prop.fontStyle !== undefined) el.style.fontStyle = next.fontStyle || "";
+                    if (prop.verticalAlign !== undefined) el.style.verticalAlign = next.verticalAlign || "";
+                    if (prop.textShadow !== undefined) el.style.textShadow = next.textShadow || "";
+                    
+                    if (prop.paddingTop !== undefined) el.style.paddingTop = next.paddingTop || "";
+                    if (prop.paddingRight !== undefined) el.style.paddingRight = next.paddingRight || "";
+                    if (prop.paddingBottom !== undefined) el.style.paddingBottom = next.paddingBottom || "";
+                    if (prop.paddingLeft !== undefined) el.style.paddingLeft = next.paddingLeft || "";
+
+                    if (prop.backgroundImage !== undefined) {
+                      if (next.backgroundImage === "none" || !next.backgroundImage) {
+                         el.style.backgroundImage = "none";
+                      } else {
+                         el.style.backgroundImage = `url(${next.backgroundImage})`;
+                      }
+                    }
+                    if (prop.backgroundPosition !== undefined) el.style.backgroundPosition = next.backgroundPosition || "";
+                    if (prop.backgroundRepeat !== undefined) el.style.backgroundRepeat = next.backgroundRepeat || "";
+                    if (prop.backgroundSize !== undefined) el.style.backgroundSize = next.backgroundSize || "";
+
+                    if (prop.borderRadius !== undefined) el.style.borderRadius = typeof next.borderRadius === 'number' ? `${next.borderRadius}px` : (next.borderRadius || "");
+                    if (prop.borderWidth !== undefined) el.style.borderWidth = next.borderWidth || "";
+                    if (prop.borderStyle !== undefined) el.style.borderStyle = next.borderStyle || "";
+                    if (prop.borderColor !== undefined) el.style.borderColor = next.borderColor || "";
+                    
+                    if (prop.height !== undefined) el.style.height = next.height || "";
                 }
             }
             propagateChanges();

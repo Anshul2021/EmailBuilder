@@ -21,7 +21,7 @@ export function Accordion({ title, children, defaultExpanded = false, className 
         <div className={cn("border-b border-slate-200", className)}>
             <button
                 onClick={() => setExpanded(!expanded)}
-                className="flex items-center w-full py-2.5 px-3 text-left text-[11px] font-bold text-slate-500 uppercase tracking-widest hover:text-slate-700 hover:bg-slate-50 transition-colors"
+                className="flex items-center w-full py-2.5 px-3 text-left text-xs font-semibold text-slate-700 hover:text-slate-900 hover:bg-slate-50 transition-colors"
                 title={title}
             >
                 {expanded ? (

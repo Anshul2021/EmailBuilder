@@ -1,12 +1,15 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
-import { SendHorizonal, FileCode, FileImage, RefreshCw, Sparkles, Paperclip, X, Zap, ChevronsLeft, ChevronsRight, Check } from "lucide-react";
+import { SendHorizonal, FileCode, RefreshCw, Sparkles, Paperclip, X, Zap, ChevronsLeft, ChevronsRight, Check, ChevronDown } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Button } from "./UI/Button";
 import { TextArea } from "./UI/TextArea";
 import { ImageUploader } from "./UI/ImageUploader";
 import { Skeleton } from "primereact/skeleton";
+
+import { Tooltip } from "./UI/Tooltip";
+import { GEMINI_MODELS } from "@/lib/prompts";
 
 interface Message {
     role: "user" | "model";
@@ -18,8 +21,6 @@ interface PromptEditorProps {
     onGenerate: (prompt: string, imageBase64: string | null, mimeType: string | null, model: string) => void;
     isLoading: boolean;
     hasTemplate: boolean;
-    onCopyMjml: () => void;
-    onExportHtml: () => void;
     credits: number;
     totalCredits: number;
     percentage: number;
@@ -27,6 +28,8 @@ interface PromptEditorProps {
     onLoadSample?: () => void;
     isCollapsed?: boolean;
     onToggleCollapse?: () => void;
+    selectedModel: string;
+    onModelChange: (model: string) => void;
 }
 
 const STARTER_PROMPTS = [
@@ -47,15 +50,12 @@ const QUICK_ACTIONS = [
     { label: "Add images", prompt: "Add placeholder images to make the layout more visual" },
 ];
 
-const ACTIVE_MODEL = "gemini-2.5-flash";
-const ACTIVE_MODEL_LABEL = "Gemini 2.5 Flash";
+
 
 export function PromptEditor({
     onGenerate,
     isLoading,
     hasTemplate,
-    onCopyMjml,
-    onExportHtml,
     credits,
     totalCredits,
     percentage,
@@ -63,12 +63,14 @@ export function PromptEditor({
     onLoadSample,
     isCollapsed = false,
     onToggleCollapse,
+    selectedModel,
+    onModelChange,
 }: PromptEditorProps) {
     const [prompt, setPrompt] = useState("");
     const [imageBase64, setImageBase64] = useState<string | null>(null);
     const [mimeType, setMimeType] = useState<string | null>(null);
     const [previewUrl, setPreviewUrl] = useState<string | null>(null);
-    const selectedModel = ACTIVE_MODEL;
+    const [showModelDropdown, setShowModelDropdown] = useState(false);
     const [showImageUploader, setShowImageUploader] = useState(false);
     const [showFullHistory, setShowFullHistory] = useState(false);
     const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -311,35 +313,7 @@ export function PromptEditor({
                 </div>
 
                 {/* ── Action bar (copy/export) ── */}
-                <AnimatePresence>
-                    {hasTemplate && (
-                        <motion.div
-                            initial={{ opacity: 0, y: 8 }}
-                            animate={{ opacity: 1, y: 0 }}
-                            exit={{ opacity: 0, y: 8 }}
-                            className="px-4 pt-2 pb-0 shrink-0 flex gap-2"
-                        >
-                            <Button
-                                variant="outline"
-                                size="sm"
-                                className="flex-1 text-xs"
-                                leftIcon={<FileCode className="w-3.5 h-3.5" />}
-                                onClick={onCopyMjml}
-                            >
-                                Copy MJML
-                            </Button>
-                            <Button
-                                variant="outline"
-                                size="sm"
-                                className="flex-1 text-xs"
-                                leftIcon={<FileImage className="w-3.5 h-3.5" />}
-                                onClick={onExportHtml}
-                            >
-                                Export HTML
-                            </Button>
-                        </motion.div>
-                    )}
-                </AnimatePresence>
+
 
                 {/* ── Prompt bar ── */}
                 <div className="shrink-0 p-4">
@@ -358,6 +332,9 @@ export function PromptEditor({
                                         setImageBase64(base64);
                                         setMimeType(mime);
                                         setPreviewUrl(dataUrl || null);
+                                        if (base64) {
+                                            setPrompt(prev => prev.trim() === "" ? "generate this exact email template as it is and use DM sans font." : prev);
+                                        }
                                     }}
                                 />
                             </motion.div>
@@ -380,15 +357,63 @@ export function PromptEditor({
                     <form onSubmit={handleSubmit}>
                         <div className="prompt-glow rounded-2xl border border-slate-200 bg-white overflow-hidden transition-all" style={{ boxShadow: "0 2px 12px rgba(15,23,42,0.07), 0 8px 28px rgba(15,23,42,0.05)" }}>
                             {/* Model indicator row */}
-                            <div className="flex items-center gap-1.5 px-3 pt-2.5 pb-1 border-b border-slate-100">
-                                <Zap className="w-3 h-3 text-violet-500 shrink-0" />
-                                <span className="text-[11px] font-semibold text-slate-500 select-none">{ACTIVE_MODEL_LABEL}</span>
-                                {hasTemplate && (
-                                    <span className="ml-auto text-[10px] font-medium text-emerald-500 flex items-center gap-1">
-                                        <div className="w-1 h-1 rounded-full bg-emerald-500" />
-                                        Edit mode
-                                    </span>
-                                )}
+                            <div className="relative">
+                                <Tooltip content="Choose which Gemini model should generate this email." position="bottom" className="w-full">
+                                    <div 
+                                        onClick={() => setShowModelDropdown(prev => !prev)}
+                                        className="flex items-center w-full gap-1.5 px-3 pt-2.5 pb-2 border-b border-slate-100 cursor-pointer hover:bg-slate-50/80 transition-colors"
+                                    >
+                                        <Zap className="w-3 h-3 text-violet-500 shrink-0" />
+                                        <span className="text-[11px] font-semibold text-slate-700 select-none">
+                                            {GEMINI_MODELS.find(m => m.value === selectedModel)?.label || selectedModel}
+                                        </span>
+                                        <ChevronDown className={`w-3 h-3 text-slate-400 transition-transform ${showModelDropdown ? "rotate-180" : ""}`} />
+                                        {hasTemplate && (
+                                            <span className="ml-auto text-[10px] font-medium text-emerald-500 flex items-center gap-1">
+                                                <div className="w-1 h-1 rounded-full bg-emerald-500" />
+                                                Edit mode
+                                            </span>
+                                        )}
+                                    </div>
+                                </Tooltip>
+
+                                <AnimatePresence>
+                                    {showModelDropdown && (
+                                        <>
+                                            {/* Backdrop overlay to close dropdown */}
+                                            <div 
+                                                className="fixed inset-0 z-40" 
+                                                onClick={() => setShowModelDropdown(false)} 
+                                            />
+                                            <motion.div
+                                                initial={{ opacity: 0, y: -4, scale: 0.98 }}
+                                                animate={{ opacity: 1, y: 0, scale: 1 }}
+                                                exit={{ opacity: 0, y: -4, scale: 0.98 }}
+                                                transition={{ duration: 0.15 }}
+                                                className="absolute left-3 right-3 top-full mt-1.5 z-50 bg-white/95 backdrop-blur border border-slate-200 rounded-xl shadow-xl p-1.5 overflow-hidden"
+                                                style={{ boxShadow: "0 10px 25px -5px rgba(15,23,42,0.12), 0 8px 16px -6px rgba(15,23,42,0.08)" }}
+                                            >
+                                                {GEMINI_MODELS.map((m) => (
+                                                    <button
+                                                        key={m.value}
+                                                        type="button"
+                                                        onClick={() => {
+                                                            onModelChange(m.value);
+                                                            setShowModelDropdown(false);
+                                                        }}
+                                                        className={`w-full flex flex-col items-start text-left px-3 py-2 rounded-lg transition-colors ${selectedModel === m.value ? "bg-violet-50 text-violet-700" : "hover:bg-slate-50 text-slate-700"}`}
+                                                    >
+                                                        <div className="flex items-center w-full justify-between">
+                                                            <span className="text-xs font-semibold text-slate-800">{m.label}</span>
+                                                            {selectedModel === m.value && <Check className="w-3 h-3 text-violet-600" />}
+                                                        </div>
+                                                        <span className={`text-[10px] ${selectedModel === m.value ? "text-violet-500/80" : "text-slate-400"}`}>{m.description}</span>
+                                                    </button>
+                                                ))}
+                                            </motion.div>
+                                        </>
+                                    )}
+                                </AnimatePresence>
                             </div>
 
                             {/* Text input */}
@@ -421,6 +446,7 @@ export function PromptEditor({
                                                         setMimeType(file.type);
                                                         setPreviewUrl(result);
                                                         setShowImageUploader(true);
+                                                        setPrompt(prev => prev.trim() === "" ? "generate this exact email template as it is and use DM sans font." : prev);
                                                     }
                                                 };
                                                 reader.readAsDataURL(file);

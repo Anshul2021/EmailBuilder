@@ -50,7 +50,7 @@ export function DesignTab({ hasSelection, selectedProps, onApplyStyle }: DesignT
         return { val: str, unit: defaultUnit };
     };
 
-    const labelClass = "text-[10px] font-bold text-slate-400 uppercase tracking-widest block mb-1.5";
+    const labelClass = "text-xs font-semibold text-slate-500 block mb-1.5";
 
     return (
         <div className="flex-1 overflow-y-auto bg-white flex flex-col custom-scrollbar pb-10">
@@ -295,31 +295,31 @@ export function DesignTab({ hasSelection, selectedProps, onApplyStyle }: DesignT
                                         <Plus className="w-3.5 h-3.5" />
                                     </button>
                                 </div>
-                                
+
                                 {shadows.length > 0 && (
-                                    <div className="border border-slate-200 rounded-lg bg-slate-50 overflow-hidden shadow-sm">
+                                    <div className="border border-slate-200 rounded-lg bg-slate-50 overflow-hidden">
                                         {shadows.map((shadow, index) => {
                                             const isActive = activeShadowLayer === index;
                                             return (
                                                 <div key={index} className="flex flex-col border-b border-slate-200 last:border-b-0">
-                                                    <div 
+                                                    <div
                                                         className={`flex items-center justify-between p-2.5 ${isActive ? 'bg-slate-50 border-b border-slate-200' : 'bg-white'}`}
                                                     >
-                                                        <div 
+                                                        <div
                                                             className="flex items-center gap-2 cursor-pointer text-slate-600 hover:text-slate-900 flex-1"
                                                             onClick={() => setActiveShadowLayer(isActive ? null : index)}
                                                         >
-                                                            <span className={`text-[10px] px-1.5 py-0.5 rounded font-bold text-slate-500 shadow-sm ${isActive ? 'bg-white border border-slate-200' : 'bg-slate-100'}`}>✛</span>
-                                                            <span className={`text-[11px] font-semibold ${isActive ? 'text-violet-700' : ''}`}>Layer {index + 1}</span>
+                                                            <span className={`text-xs px-1.5 py-0.5 rounded font-semibold text-slate-550 ${isActive ? 'bg-white border border-slate-200' : 'bg-slate-100'}`}>✛</span>
+                                                            <span className={`text-xs font-semibold ${isActive ? 'text-violet-700' : ''}`}>Layer {index + 1}</span>
                                                         </div>
                                                         <div className="flex items-center gap-2.5">
-                                                            <div className="w-4 h-4 shadow-sm border border-slate-200 rounded-[3px] flex items-center justify-center font-bold text-slate-700 text-[9px]" style={{ backgroundColor: shadow.color, color: 'transparent' }}>.</div>
+                                                            <div className="w-4 h-4 border border-slate-200 rounded-[3px] flex items-center justify-center font-semibold text-slate-700 text-xs" style={{ backgroundColor: shadow.color, color: 'transparent' }}>.</div>
                                                             <button onClick={() => removeShadow(index)} className="text-slate-400 hover:text-red-500 transition-colors">
                                                                 <X className="w-3.5 h-3.5" />
                                                             </button>
                                                         </div>
                                                     </div>
-                                                    
+
                                                     {isActive && (
                                                         <div className="p-3 grid grid-cols-2 gap-x-3 gap-y-4 bg-slate-50">
                                                             <div className="flex flex-col">
@@ -418,72 +418,72 @@ export function DesignTab({ hasSelection, selectedProps, onApplyStyle }: DesignT
             <Accordion title="Space" defaultExpanded={false}>
                 <div className="flex flex-col gap-4 pt-1">
                     <label className={labelClass}>Padding</label>
-                    
+
                     {/* Visual Padding Box */}
                     <div className="relative w-full max-w-[220px] aspect-[4/3] mx-auto bg-slate-100 border border-slate-200 rounded-lg p-2 mt-4">
                         {/* Top Input */}
                         <div className="absolute -top-7 left-1/2 -translate-x-1/2 w-20">
-                            <span className="text-[9px] text-slate-400 font-bold block text-center mb-0.5">TOP</span>
+                            <span className="text-xs text-slate-400 font-semibold block text-center mb-0.5">Top</span>
                             {(() => {
                                 const { val, unit } = parseUnit(selectedProps.paddingTop, "px");
                                 return (
-                                    <UnitInput 
-                                        value={val} 
-                                        onChangeValue={(v) => handleUnitChange("paddingTop", v, unit)} 
-                                        units={["px", "%", "em"]} 
-                                        unit={unit} 
+                                    <UnitInput
+                                        value={val}
+                                        onChangeValue={(v) => handleUnitChange("paddingTop", v, unit)}
+                                        units={["px", "%", "em"]}
+                                        unit={unit}
                                         onChangeUnit={(u) => handleStyleChange("paddingTop", `${val}${u}`)}
                                     />
                                 );
                             })()}
                         </div>
-                        
+
                         {/* Bottom Input */}
                         <div className="absolute -bottom-8 left-1/2 -translate-x-1/2 w-20">
-                            <span className="text-[9px] text-slate-400 font-bold block text-center mb-0.5">BOTTOM</span>
+                            <span className="text-xs text-slate-400 font-semibold block text-center mb-0.5">Bottom</span>
                             {(() => {
                                 const { val, unit } = parseUnit(selectedProps.paddingBottom, "px");
                                 return (
-                                    <UnitInput 
-                                        value={val} 
-                                        onChangeValue={(v) => handleUnitChange("paddingBottom", v, unit)} 
-                                        units={["px", "%", "em"]} 
+                                    <UnitInput
+                                        value={val}
+                                        onChangeValue={(v) => handleUnitChange("paddingBottom", v, unit)}
+                                        units={["px", "%", "em"]}
                                         unit={unit}
-                                        onChangeUnit={(u) => handleStyleChange("paddingBottom", `${val}${u}`)} 
+                                        onChangeUnit={(u) => handleStyleChange("paddingBottom", `${val}${u}`)}
                                     />
                                 );
                             })()}
                         </div>
-                        
+
                         {/* Left Input */}
                         <div className="absolute top-1/2 -left-12 -translate-y-1/2 w-20">
-                            <span className="text-[9px] text-slate-400 font-bold block text-center mb-0.5">LEFT</span>
+                            <span className="text-xs text-slate-400 font-semibold block text-center mb-0.5">Left</span>
                             {(() => {
                                 const { val, unit } = parseUnit(selectedProps.paddingLeft, "px");
                                 return (
-                                    <UnitInput 
-                                        value={val} 
-                                        onChangeValue={(v) => handleUnitChange("paddingLeft", v, unit)} 
-                                        units={["px", "%", "em"]} 
-                                        unit={unit} 
+                                    <UnitInput
+                                        value={val}
+                                        onChangeValue={(v) => handleUnitChange("paddingLeft", v, unit)}
+                                        units={["px", "%", "em"]}
+                                        unit={unit}
                                         onChangeUnit={(u) => handleStyleChange("paddingLeft", `${val}${u}`)}
                                     />
                                 );
                             })()}
                         </div>
-                        
+
                         {/* Right Input */}
                         <div className="absolute top-1/2 -right-12 -translate-y-1/2 w-20">
-                            <span className="text-[9px] text-slate-400 font-bold block text-center mb-0.5">RIGHT</span>
+                            <span className="text-xs text-slate-400 font-semibold block text-center mb-0.5">Right</span>
                             {(() => {
                                 const { val, unit } = parseUnit(selectedProps.paddingRight, "px");
                                 return (
-                                    <UnitInput 
-                                        value={val} 
-                                        onChangeValue={(v) => handleUnitChange("paddingRight", v, unit)} 
-                                        units={["px", "%", "em"]} 
+                                    <UnitInput
+                                        value={val}
+                                        onChangeValue={(v) => handleUnitChange("paddingRight", v, unit)}
+                                        units={["px", "%", "em"]}
                                         unit={unit}
-                                        onChangeUnit={(u) => handleStyleChange("paddingRight", `${val}${u}`)} 
+                                        onChangeUnit={(u) => handleStyleChange("paddingRight", `${val}${u}`)}
                                     />
                                 );
                             })()}
@@ -516,7 +516,7 @@ export function DesignTab({ hasSelection, selectedProps, onApplyStyle }: DesignT
                             );
                         })()}
                     </div>
-                    
+
                     <div className="flex flex-col">
                         <label className={labelClass}>Width</label>
                         {(() => {

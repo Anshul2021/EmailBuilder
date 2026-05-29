@@ -54,15 +54,15 @@ DO NOT invent or hallucinate custom components. Only use the above.
 DESIGN STANDARDS
 ═══════════════════════════
 - Max width: 600px (set on mj-body)
-- Default font: "Helvetica Neue", Arial, Helvetica, sans-serif
+- Default font: "Helvetica Neue", Arial, Helvetica, sans-serif. If custom font "DM Sans" is requested, import it using \`<mj-font name="DM Sans" href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700&display=swap" />\` inside \`<mj-attributes>\` or \`<mj-head>\`, and set font-family="DM Sans, sans-serif" on the template.
 - Heading sizes: h1=28px, h2=22px, h3=18px
 - Body text: 14-16px, line-height 1.6
 - Section padding: 20px 24px
 - Button: always href="#", min padding 12px 28px, border-radius 4-8px
-- Images: always include alt text, use placehold.co for placeholders
-  Format: https://placehold.co/WIDTHxHEIGHT/BGCOLOR/TEXTCOLOR?text=Label
+- Images: always include alt text. Use placehold.co for image src values (e.g. 'https://placehold.co/600x400' with appropriate dimensions matching the layout).
 - Footer: include unsubscribe link, company info
 - Use professional, accessible color contrast
+
 
 ═══════════════════════════
 EMAIL CLIENT SAFE
@@ -96,10 +96,10 @@ STEP-BY-STEP ANALYSIS:
    - Number of columns (1, 2, 3, or 4)
    - Column width ratios (e.g., 50%/50%, 33%/33%/33%)
 3. For EACH content element in each column, identify:
-   - TEXT: approximate font size, weight (bold/normal), color, alignment
-   - IMAGE: approximate dimensions (width x height), use placehold.co
-   - BUTTON: text, background color, text color, border-radius
-   - DIVIDER: color, thickness
+    - TEXT: approximate font size, weight (bold/normal), color, alignment
+    - IMAGE: approximate dimensions (width x height), use placehold.co
+    - BUTTON: text, background color, text color, border-radius
+    - DIVIDER: color, thickness
 4. SPACING: Approximate padding between sections and elements.
 
 OUTPUT RULES FOR IMAGE MODE:
@@ -165,3 +165,23 @@ EDITING RULES:
 ALLOWED INSIDE A SECTION:
 mj-column, mj-text, mj-image, mj-button, mj-divider, mj-spacer, mj-social, mj-social-element
 `;
+
+export interface GeminiModel {
+  label: string;
+  value: string;
+  description: string;
+}
+
+export const GEMINI_MODELS: GeminiModel[] = [
+  {
+    label: "Gemini 2.5 Flash",
+    value: "gemini-2.5-flash",
+    description: "Fast and reliable for email generation"
+  },
+  {
+    label: "Gemini 3.5 Flash",
+    value: "gemini-3.5-flash",
+    description: "Newer model for better quality and reasoning"
+  }
+];
+

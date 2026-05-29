@@ -23,6 +23,10 @@ interface LivePreviewProps {
     onExportHtml: () => void;
     onSaveTemplate?: () => void;
     onOpenHistory?: () => void;
+    onPreview: () => void;
+    onSharePreview: () => void;
+    onDownloadHtml: () => void;
+    onDownloadEml: () => void;
     // Section editing callbacks
     onSectionEdit?: (instruction: string, sectionIndex: number) => void;
     onSectionDuplicate?: (sectionIndex: number) => void;
@@ -44,6 +48,7 @@ interface LivePreviewProps {
     // Bidirectional hover sync
     hoveredLayerNodeId: string | null;
     onLayerHover: (nodeId: string | null) => void;
+    isSharing?: boolean;
 }
 
 const DEFAULT_PROPS: ElementProperties = {
@@ -64,7 +69,7 @@ const DEFAULT_PROPS: ElementProperties = {
     fontStyle: "normal",
     verticalAlign: "baseline",
     textShadow: "",
-    
+
     paddingTop: "0",
     paddingRight: "0",
     paddingBottom: "0",
@@ -107,6 +112,10 @@ export function LivePreview({
     onExportHtml,
     onSaveTemplate,
     onOpenHistory,
+    onPreview,
+    onSharePreview,
+    onDownloadHtml,
+    onDownloadEml,
     onSectionEdit,
     onSectionDuplicate,
     onSectionDelete,
@@ -126,6 +135,7 @@ export function LivePreview({
     onLayerAiEdit,
     hoveredLayerNodeId,
     onLayerHover,
+    isSharing = false,
 }: LivePreviewProps) {
     const [viewMode, setViewMode] = useState<"desktop" | "mobile">("desktop");
     const [showEditPanel, setShowEditPanel] = useState(true);
@@ -257,11 +267,16 @@ export function LivePreview({
     const reapplyStyles = useCallback((el: HTMLElement, props: ElementProperties) => {
         if (props.isImage) {
             const img = el as HTMLImageElement;
+            if (props.src !== undefined) {
+                img.src = props.src || "";
+                img.setAttribute("src", props.src || "");
+            }
             if (props.width !== undefined) {
                 img.style.width = `${props.width}%`;
                 img.setAttribute("width", `${props.width}%`);
             }
             if (props.borderRadius !== undefined) img.style.borderRadius = typeof props.borderRadius === 'number' ? `${props.borderRadius}px` : (props.borderRadius || "");
+            img.style.objectFit = props.objectFit || "cover";
         } else {
             if (props.fontSize) el.style.fontSize = typeof props.fontSize === 'number' ? `${props.fontSize}px` : props.fontSize;
             if (props.fontWeight) el.style.fontWeight = props.fontWeight;
@@ -275,7 +290,7 @@ export function LivePreview({
             if (props.fontStyle) el.style.fontStyle = props.fontStyle;
             if (props.verticalAlign) el.style.verticalAlign = props.verticalAlign;
             if (props.textShadow) el.style.textShadow = props.textShadow;
-            
+
             if (props.paddingTop) el.style.paddingTop = props.paddingTop;
             if (props.paddingRight) el.style.paddingRight = props.paddingRight;
             if (props.paddingBottom) el.style.paddingBottom = props.paddingBottom;
@@ -283,7 +298,7 @@ export function LivePreview({
 
             if (props.backgroundImage && props.backgroundImage !== "none") el.style.backgroundImage = `url(${props.backgroundImage})`;
             else if (props.backgroundImage === "none") el.style.backgroundImage = "none";
-            
+
             if (props.backgroundPosition) el.style.backgroundPosition = props.backgroundPosition;
             if (props.backgroundRepeat) el.style.backgroundRepeat = props.backgroundRepeat;
             if (props.backgroundSize) el.style.backgroundSize = props.backgroundSize;
@@ -314,6 +329,7 @@ export function LivePreview({
                     cursor: pointer !important;
                     transition: outline 0.15s ease, filter 0.15s ease;
                     display: inline-block;
+                    object-fit: cover;
                 }
                 p:hover, h1:hover, h2:hover, h3:hover, h4:hover, h5:hover, h6:hover, td:hover, span:hover, a:hover {
                     outline: 1px dashed #c4b5fd !important;
@@ -339,6 +355,30 @@ export function LivePreview({
                     outline-offset: 3px;
                     border-radius: 2px;
                     white-space: pre-wrap;
+                }
+
+                .ag-hover-replace-btn {
+                    position: absolute;
+                    background: #7c3aed;
+                    color: white;
+                    border: none;
+                    border-radius: 20px;
+                    padding: 5px 10px;
+                    font-size: 10px;
+                    font-weight: 700;
+                    cursor: pointer;
+                    z-index: 1001;
+                    box-shadow: 0 4px 10px rgba(124, 58, 237, 0.3);
+                    display: none;
+                    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+                    align-items: center;
+                    justify-content: center;
+                    transition: background 0.15s ease, transform 0.1s ease;
+                    outline: none;
+                }
+                .ag-hover-replace-btn:hover {
+                    background: #6d28d9;
+                    transform: scale(1.05);
                 }
 
                 /* Section hover highlight */
@@ -462,6 +502,15 @@ export function LivePreview({
             indicator.id = "ag-drop-indicator";
             indicator.className = "ag-drop-indicator";
             doc.body.appendChild(indicator);
+        }
+
+        if (!doc.getElementById("ag-hover-replace-btn")) {
+            const btn = doc.createElement("button");
+            btn.id = "ag-hover-replace-btn";
+            btn.className = "ag-hover-replace-btn";
+            btn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 4px; display: inline-block; vertical-align: middle;"><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h7"/><polyline points="16 3 21 3 21 8"/><line x1="21" y1="3" x2="14" y2="10"/></svg>Replace`;
+            btn.title = "Replace Image";
+            doc.body.appendChild(btn);
         }
 
         // ──── Section detection via css-class markers ────
@@ -724,6 +773,32 @@ export function LivePreview({
                 setHoveredSectionIndex(null);
                 setSectionControlsPos(null);
             }
+
+            // Image hover Replace Button positioning
+            const hoverReplaceBtn = doc.getElementById("ag-hover-replace-btn");
+            const isOverImg = target.tagName === "IMG";
+            const isOverBtn = target === hoverReplaceBtn || hoverReplaceBtn?.contains(target);
+
+            if ((isOverImg || isOverBtn) && !isResizingRef.current && !isBlockDraggingRef.current) {
+                const activeImg = isOverImg ? target : (hoverReplaceBtn as any)?._targetImg;
+                if (activeImg) {
+                    const rect = activeImg.getBoundingClientRect();
+                    const scrollX = win.scrollX;
+                    const scrollY = win.scrollY;
+                    if (hoverReplaceBtn) {
+                        const btnWidth = 72;
+                        const btnHeight = 22;
+                        hoverReplaceBtn.style.left = `${rect.left + scrollX + (rect.width - btnWidth) / 2}px`;
+                        hoverReplaceBtn.style.top = `${rect.top + scrollY + (rect.height - btnHeight) / 2}px`;
+                        hoverReplaceBtn.style.display = "flex";
+                        (hoverReplaceBtn as any)._targetImg = activeImg;
+                    }
+                }
+            } else {
+                if (hoverReplaceBtn) {
+                    hoverReplaceBtn.style.display = "none";
+                }
+            }
         });
 
         // ── Preview click → select matching layer ──
@@ -745,6 +820,22 @@ export function LivePreview({
             const target = e.target as HTMLElement;
             const resizeHandle = doc.getElementById("ag-resize-handle");
             const deleteHandle = doc.getElementById("ag-delete-handle");
+            const hoverReplaceBtn = doc.getElementById("ag-hover-replace-btn");
+
+            if ((target === hoverReplaceBtn || hoverReplaceBtn?.contains(target))) {
+                e.preventDefault();
+                e.stopPropagation();
+                const targetImg = (hoverReplaceBtn as any)._targetImg as HTMLImageElement;
+                if (targetImg) {
+                    // Click the image to select it
+                    targetImg.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
+                    // Immediately trigger file selector click
+                    clickedImageRef.current = targetImg;
+                    imageInputRef.current?.click();
+                }
+                return;
+            }
+
             if (target === deleteHandle && selectedElementRef.current) {
                 e.preventDefault();
                 e.stopPropagation();
@@ -823,7 +914,8 @@ export function LivePreview({
                     elementTag: "img",
                     width: widthPercent,
                     borderRadius: parseInt(cs.borderRadius) || 0,
-                    src: (target as HTMLImageElement).src
+                    src: (target as HTMLImageElement).src,
+                    objectFit: cs.objectFit || "cover"
                 });
                 setHasSelection(true);
                 setShowEditPanel(true);
@@ -857,7 +949,7 @@ export function LivePreview({
                     fontStyle: cs.fontStyle || "normal",
                     verticalAlign: cs.verticalAlign || "baseline",
                     textShadow: cs.textShadow || "none",
-                    
+
                     paddingTop: cs.paddingTop || "0",
                     paddingRight: cs.paddingRight || "0",
                     paddingBottom: cs.paddingBottom || "0",
@@ -970,6 +1062,17 @@ export function LivePreview({
             if (el) {
                 if (next.isImage) {
                     const img = el as HTMLImageElement;
+                    if (prop.src !== undefined) {
+                        const currentHeight = img.offsetHeight;
+                        img.style.height = `${currentHeight}px`;
+                        img.setAttribute("height", `${currentHeight}px`);
+                        img.style.objectFit = next.objectFit || "cover";
+                        img.src = next.src || "";
+                        img.setAttribute("src", next.src || "");
+                    }
+                    if (prop.objectFit !== undefined) {
+                        img.style.objectFit = next.objectFit || "cover";
+                    }
                     if (prop.width !== undefined) {
                         img.style.width = `${next.width}%`;
                         img.setAttribute("width", `${next.width}%`);
@@ -992,18 +1095,18 @@ export function LivePreview({
                     if (prop.fontStyle !== undefined) el.style.fontStyle = next.fontStyle || "";
                     if (prop.verticalAlign !== undefined) el.style.verticalAlign = next.verticalAlign || "";
                     if (prop.textShadow !== undefined) el.style.textShadow = next.textShadow || "";
-                    
+
                     if (prop.paddingTop !== undefined) el.style.paddingTop = next.paddingTop || "";
                     if (prop.paddingRight !== undefined) el.style.paddingRight = next.paddingRight || "";
                     if (prop.paddingBottom !== undefined) el.style.paddingBottom = next.paddingBottom || "";
                     if (prop.paddingLeft !== undefined) el.style.paddingLeft = next.paddingLeft || "";
 
                     if (prop.backgroundImage !== undefined) {
-                      if (next.backgroundImage === "none" || !next.backgroundImage) {
-                         el.style.backgroundImage = "none";
-                      } else {
-                         el.style.backgroundImage = `url(${next.backgroundImage})`;
-                      }
+                        if (next.backgroundImage === "none" || !next.backgroundImage) {
+                            el.style.backgroundImage = "none";
+                        } else {
+                            el.style.backgroundImage = `url(${next.backgroundImage})`;
+                        }
                     }
                     if (prop.backgroundPosition !== undefined) el.style.backgroundPosition = next.backgroundPosition || "";
                     if (prop.backgroundRepeat !== undefined) el.style.backgroundRepeat = next.backgroundRepeat || "";
@@ -1013,7 +1116,7 @@ export function LivePreview({
                     if (prop.borderWidth !== undefined) el.style.borderWidth = next.borderWidth || "";
                     if (prop.borderStyle !== undefined) el.style.borderStyle = next.borderStyle || "";
                     if (prop.borderColor !== undefined) el.style.borderColor = next.borderColor || "";
-                    
+
                     if (prop.height !== undefined) el.style.height = next.height || "";
                 }
             }
@@ -1061,6 +1164,11 @@ export function LivePreview({
         if (!file || !clickedImageRef.current) return;
 
         const targetImg = clickedImageRef.current;
+        const currentHeight = targetImg.offsetHeight;
+        targetImg.style.height = `${currentHeight}px`;
+        targetImg.setAttribute("height", `${currentHeight}px`);
+        targetImg.style.objectFit = "cover";
+
         const reader = new FileReader();
         reader.onload = (ev) => {
             const dataUrl = ev.target?.result as string;
@@ -1209,8 +1317,13 @@ export function LivePreview({
                 onCopyMjml={handleCopyMjml}
                 onOpenHistory={onOpenHistory}
                 onSaveTemplate={onSaveTemplate}
+                onPreview={onPreview}
+                onSharePreview={onSharePreview}
+                onDownloadHtml={onDownloadHtml}
+                onDownloadEml={onDownloadEml}
                 onExportHtml={onExportHtml}
                 onAddText={handleAddText}
+                isSharing={isSharing}
             />
 
             {/* ── Section Controls Overlay ── */}

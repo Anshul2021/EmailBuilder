@@ -370,7 +370,7 @@ export function LayerPanel({
         </div>
         <div>
           <p className="text-xs font-semibold text-slate-600 mb-1">No template loaded</p>
-          <p className="text-[11px] text-slate-400 leading-relaxed">
+          <p className="text-xs text-slate-400 leading-relaxed">
             Generate or load a template to see its layer structure
           </p>
         </div>

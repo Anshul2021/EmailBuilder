@@ -28,7 +28,7 @@ export function UnitInput({ value, unit = "px", onChangeValue, onChangeUnit, uni
     };
 
     return (
-        <div className={cn("flex items-center bg-slate-50 border border-slate-200 rounded-lg overflow-hidden h-7 shadow-sm", className)}>
+        <div className={cn("flex items-center bg-slate-50 border border-slate-200 rounded-lg overflow-hidden h-7", className)}>
             <input
                 type="text"
                 value={value !== undefined ? value : ""}
@@ -39,13 +39,13 @@ export function UnitInput({ value, unit = "px", onChangeValue, onChangeUnit, uni
                 <select
                     value={unit}
                     onChange={(e) => onChangeUnit(e.target.value)}
-                    className="bg-transparent text-slate-500 text-[10px] px-1 h-full outline-none border-l border-slate-200 appearance-none cursor-pointer hover:bg-slate-100 font-medium text-center transition-colors"
+                    className="bg-transparent text-slate-500 text-xs px-1 h-full outline-none border-l border-slate-200 appearance-none cursor-pointer hover:bg-slate-100 font-medium text-center transition-colors"
                     style={{ WebkitAppearance: 'none', MozAppearance: 'none' }}
                 >
                     {units.map(u => <option key={u} value={u} className="bg-white text-slate-600">{u}</option>)}
                 </select>
             ) : (
-                <div className="text-[10px] text-slate-400 font-medium px-1.5 h-full flex items-center border-l border-slate-200 bg-slate-100/50">
+                <div className="text-xs text-slate-400 font-medium px-1.5 h-full flex items-center border-l border-slate-200 bg-slate-100/50">
                     {unit}
                 </div>
             )}

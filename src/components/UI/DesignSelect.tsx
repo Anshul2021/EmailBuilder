@@ -13,10 +13,10 @@ export interface DesignSelectProps extends React.SelectHTMLAttributes<HTMLSelect
 
 export function DesignSelect({ options, className, ...props }: DesignSelectProps) {
     return (
-        <div className="relative h-7 shadow-sm rounded-lg">
+        <div className="relative h-7 rounded-lg">
             <select
                 className={cn(
-                    "w-full h-full appearance-none bg-white border border-slate-200 text-slate-600 text-xs rounded-lg px-2 pr-6 outline-none hover:border-slate-300 focus:border-violet-400 focus:ring-2 focus:ring-violet-400/20 transition-all cursor-pointer font-medium",
+                    "w-full h-full appearance-none bg-white border border-slate-200 text-slate-600 text-xs rounded-lg px-2 pr-6 outline-none hover:border-slate-300 focus:border-violet-400 transition-all cursor-pointer font-medium",
                     className
                 )}
                 style={{ WebkitAppearance: 'none', MozAppearance: 'none' }}

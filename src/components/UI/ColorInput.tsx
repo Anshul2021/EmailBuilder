@@ -14,7 +14,7 @@ export interface ColorInputProps {
 
 export function ColorInput({ value, onChange, className }: ColorInputProps) {
     return (
-        <div className={cn("flex items-center bg-slate-50 border border-slate-200 rounded-lg overflow-hidden p-0.5 shadow-sm", className)}>
+        <div className={cn("flex items-center bg-slate-50 border border-slate-200 rounded-lg overflow-hidden p-0.5", className)}>
             <input
                 type="text"
                 value={value || ""}

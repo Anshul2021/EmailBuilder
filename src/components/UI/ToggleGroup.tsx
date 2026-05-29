@@ -21,7 +21,7 @@ export interface ToggleGroupProps {
 
 export function ToggleGroup({ options, value, onChange, className }: ToggleGroupProps) {
     return (
-        <div className={cn("flex items-center w-full rounded-lg bg-slate-50 border border-slate-200 overflow-hidden shadow-sm", className)}>
+        <div className={cn("flex items-center w-full rounded-lg bg-slate-50 border border-slate-200 overflow-hidden", className)}>
             {options.map((opt, i) => {
                 const isActive = value === opt.value;
                 return (
@@ -31,13 +31,13 @@ export function ToggleGroup({ options, value, onChange, className }: ToggleGroup
                         className={cn(
                             "flex-1 flex items-center justify-center p-1.5 text-xs transition-colors h-7",
                             isActive
-                                ? "bg-white text-violet-700 shadow-[inset_0_0_0_1px_theme(colors.violet.200)]"
+                                ? "bg-violet-100 text-violet-700 font-semibold"
                                 : "text-slate-500 hover:text-slate-700 hover:bg-slate-100",
                             i > 0 && "border-l border-slate-200"
                         )}
                         title={opt.label || opt.value}
                     >
-                        {opt.icon || opt.label || <span className="uppercase text-[10px] font-bold">{opt.value.charAt(0)}</span>}
+                        {opt.icon || opt.label || <span className="text-xs font-semibold">{opt.value.charAt(0)}</span>}
                     </button>
                 );
             })}

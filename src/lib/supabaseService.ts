@@ -66,3 +66,19 @@ export async function deleteTemplate(id: number): Promise<boolean> {
 
   return true;
 }
+
+export async function getTemplateById(id: number): Promise<TemplateRecord | null> {
+  const { data, error } = await supabase
+    .from("MJML_HTML")
+    .select("*")
+    .match({ id })
+    .single();
+
+  if (error) {
+    console.error("Error fetching template by ID:", error);
+    throw new Error(error.message);
+  }
+
+  return data;
+}
+

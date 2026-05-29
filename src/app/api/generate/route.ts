@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { GoogleGenerativeAI, Part, Content } from "@google/generative-ai";
-import { SYSTEM_PROMPT } from "@/lib/prompts";
+import { SYSTEM_PROMPT, GEMINI_MODELS } from "@/lib/prompts";
+import { resolvePexelsImages } from "@/lib/pexels";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -49,7 +50,7 @@ export async function POST(req: NextRequest) {
                     keepComments: false,
                 });
                 if (errors?.length > 0) console.warn("[API] MJML compile warnings:", errors.length);
-                // Return the ORIGINAL mjml (without markers) but HTML with markers
+                // Return the ORIGINAL mjml but HTML with markers
                 return NextResponse.json({ mjml: rawMjmlCode, html });
             } catch (compileError: unknown) {
                 const compileMsg = compileError instanceof Error ? compileError.message : String(compileError);
@@ -57,8 +58,13 @@ export async function POST(req: NextRequest) {
             }
         }
 
-        // Resolve the exact API model ID, fallback to passed value
-        const resolvedModel = requestedModel || "gemini-2.5-flash";
+        // Validate the model against the allowed GEMINI_MODELS list
+        let primaryModel = requestedModel;
+        if (!primaryModel) {
+            primaryModel = "gemini-2.5-flash";
+        } else if (!GEMINI_MODELS.some(m => m.value === primaryModel)) {
+            return NextResponse.json({ error: "Invalid model selected." }, { status: 400 });
+        }
 
         if (!prompt && !imageBase64) {
             return NextResponse.json({ error: "Prompt or an image is required" }, { status: 400 });
@@ -68,22 +74,32 @@ export async function POST(req: NextRequest) {
             return NextResponse.json({ error: "GEMINI_API_KEY is not configured on the server." }, { status: 500 });
         }
 
-        console.log(`[API] Model: ${resolvedModel} (requested: ${requestedModel})`);
+        // Build the try queue: primary model first, followed by others in fallback list
+        const modelQueue = [
+            primaryModel,
+            ...["gemini-3.5-flash", "gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-pro", "gemini-1.5-flash"].filter(m => m !== primaryModel)
+        ];
 
         let mjmlCode = "";
-        try {
-            const model = ai.getGenerativeModel({
-                model: resolvedModel,
-                systemInstruction: SYSTEM_PROMPT
-            });
+        let resolvedModel = primaryModel;
+        let lastError: unknown = null;
 
-            const parts: Part[] = [];
+        for (let i = 0; i < modelQueue.length; i++) {
+            const currentModel = modelQueue[i];
+            console.log(`[API] Attempting generation with model: ${currentModel} (Attempt ${i + 1}/${modelQueue.length})`);
+            try {
+                const model = ai.getGenerativeModel({
+                    model: currentModel,
+                    systemInstruction: SYSTEM_PROMPT
+                });
 
-            // Build the prompt text
-            if (prompt) {
-                let textContent = prompt;
-                if (currentMjml) {
-                    textContent = `I have an existing MJML template and I want to make changes.
+                const parts: Part[] = [];
+
+                // Build the prompt text
+                if (prompt) {
+                    let textContent = prompt;
+                    if (currentMjml) {
+                        textContent = `I have an existing MJML template and I want to make changes.
 
 CURRENT MJML TEMPLATE:
 ${currentMjml}
@@ -92,45 +108,79 @@ USER REQUEST:
 ${prompt}
 
 Return the complete updated MJML. Modify only what was requested, preserve everything else.`;
+                    }
+                    parts.push({ text: textContent });
                 }
-                parts.push({ text: textContent });
-            }
 
-            // For image-only requests, add an explicit instruction
-            if (imageBase64 && mimeType) {
-                parts.push({ inlineData: { data: imageBase64, mimeType } });
-                if (!prompt) {
-                    parts.push({ text: "Analyze this email screenshot and generate MJML that replicates the layout, colors, typography, and structure as closely as possible. Create one mj-section per visible row in the image." });
+                // For image-only requests, add an explicit instruction
+                if (imageBase64 && mimeType) {
+                    parts.push({ inlineData: { data: imageBase64, mimeType } });
+                    if (!prompt) {
+                        parts.push({ text: "Analyze this email screenshot and generate MJML that replicates the layout, colors, typography, and structure as closely as possible. Create one mj-section per visible row in the image." });
+                    }
+                }
+
+                const currentMessage: Content = { role: "user", parts };
+                const formattedHistory: Content[] = Array.isArray(history) ? history.map((msg: { role: string; parts?: { text?: string }[] }) => ({
+                    role: msg.role === "model" ? "model" : "user",
+                    parts: Array.isArray(msg.parts) ? msg.parts.map((p: { text?: string }) => ({ text: p.text || "" })) : []
+                })) : [];
+
+                const result = await model.generateContent({ contents: [...formattedHistory, currentMessage] });
+                mjmlCode = result.response.text() || "";
+                resolvedModel = currentModel;
+                console.log(`[API] Gemini OK using model ${currentModel}, response length:`, mjmlCode.length);
+                
+                // If succeeded, break out of the loop
+                lastError = null;
+                break;
+            } catch (genError: unknown) {
+                console.error(`[API] Gemini error with model ${currentModel}:`, genError);
+                lastError = genError;
+
+                const errObj = genError as { message?: string; status?: number };
+                const errMsg: string = errObj?.message || String(genError);
+                const status: number = errObj?.status || 500;
+
+                // Identify if the error is transient/overloaded (503, 429, or specific message patterns)
+                const isTransient = 
+                    status === 503 || 
+                    status === 429 || 
+                    errMsg.includes("503") || 
+                    errMsg.includes("429") || 
+                    errMsg.toLowerCase().includes("quota") || 
+                    errMsg.toLowerCase().includes("demand") || 
+                    errMsg.toLowerCase().includes("overloaded") || 
+                    errMsg.toLowerCase().includes("unavailable") || 
+                    errMsg.toLowerCase().includes("resource_exhausted");
+
+                if (isTransient && i < modelQueue.length - 1) {
+                    console.warn(`[API] Model ${currentModel} failed. Trying fallback model: ${modelQueue[i + 1]}`);
+                    continue;
+                } else {
+                    // Non-transient or last model in queue: exit loop and handle the error
+                    break;
                 }
             }
+        }
 
-            const currentMessage: Content = { role: "user", parts };
-            const formattedHistory: Content[] = Array.isArray(history) ? history.map((msg: { role: string; parts?: { text?: string }[] }) => ({
-                role: msg.role === "model" ? "model" : "user",
-                parts: Array.isArray(msg.parts) ? msg.parts.map((p: { text?: string }) => ({ text: p.text || "" })) : []
-            })) : [];
+        if (lastError) {
+            console.error("[API] Final Gemini execution failure:", lastError);
 
-            const result = await model.generateContent({ contents: [...formattedHistory, currentMessage] });
-            mjmlCode = result.response.text() || "";
-            console.log("[API] Gemini OK, response length:", mjmlCode.length);
-
-        } catch (genError: unknown) {
-            console.error("[API] Gemini error:", genError);
-
-            const errObj = genError as { message?: string; status?: number };
-            const errMsg: string = errObj?.message || String(genError);
+            const errObj = lastError as { message?: string; status?: number };
+            const errMsg: string = errObj?.message || String(lastError);
             const status: number = errObj?.status || 500;
 
             if (status === 429 || errMsg.includes("429") || errMsg.toLowerCase().includes("quota")) {
                 return NextResponse.json({
-                    error: `Daily quota reached for ${requestedModel}. Switch to another model in the model selector.`,
+                    error: `Daily quota reached or rate-limited. Switch to another model in the model selector.`,
                     code: "QUOTA_EXCEEDED"
                 }, { status: 429 });
             }
 
             if (status === 404 || errMsg.includes("404") || errMsg.toLowerCase().includes("not found")) {
                 return NextResponse.json({
-                    error: `Model "${requestedModel}" is not available with your API key. Try Gemini 2.5 Flash, 2.0 Flash or 1.5 Pro.`,
+                    error: `Model is not available with your API key. Try Gemini 2.5 Flash, 2.0 Flash or 1.5 Pro.`,
                     code: "MODEL_NOT_FOUND"
                 }, { status: 404 });
             }
@@ -163,8 +213,8 @@ Return the complete updated MJML. Modify only what was requested, preserve every
             });
 
             if (errors?.length > 0) console.warn("[API] MJML warnings:", errors.length);
-            // Return the ORIGINAL mjml (clean) but HTML with markers for section detection
-            return NextResponse.json({ mjml: mjmlCode, html });
+            // Return the ORIGINAL mjml (clean) but HTML with markers for section detection and the model that succeeded
+            return NextResponse.json({ mjml: mjmlCode, html, modelUsed: resolvedModel });
 
         } catch (compileError: unknown) {
             const compileMsg = compileError instanceof Error ? compileError.message : String(compileError);

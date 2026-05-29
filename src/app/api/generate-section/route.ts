@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { GoogleGenerativeAI, Part, Content } from "@google/generative-ai";
-import { SECTION_EDIT_PROMPT } from "@/lib/prompts";
+import { SECTION_EDIT_PROMPT, GEMINI_MODELS } from "@/lib/prompts";
+import { resolvePexelsImages } from "@/lib/pexels";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 30;
@@ -26,48 +27,100 @@ export async function POST(req: NextRequest) {
             );
         }
 
-        const resolvedModel = requestedModel || "gemini-2.5-flash";
-        console.log(`[Section API] Model: ${resolvedModel}`);
+        // Validate the model against the allowed GEMINI_MODELS list
+        let primaryModel = requestedModel;
+        if (!primaryModel) {
+            primaryModel = "gemini-2.5-flash";
+        } else if (!GEMINI_MODELS.some(m => m.value === primaryModel)) {
+            return NextResponse.json(
+                { error: "Invalid model selected" },
+                { status: 400 }
+            );
+        }
 
-        try {
-            const model = ai.getGenerativeModel({
-                model: resolvedModel,
-                systemInstruction: SECTION_EDIT_PROMPT,
-            });
+        // Build the try queue: primary model first, followed by others in fallback list
+        const modelQueue = [
+            primaryModel,
+            ...["gemini-3.5-flash", "gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-pro", "gemini-1.5-flash"].filter(m => m !== primaryModel)
+        ];
 
-            // Build a concise prompt with only the section context
-            let promptText = `CURRENT SECTION MJML:\n${sectionMjml}\n\nUSER INSTRUCTION:\n${instruction}\n\nReturn ONLY the modified <mj-section>...</mj-section> block.`;
+        let sectionCode = "";
+        let resolvedModel = primaryModel;
+        let lastError: unknown = null;
 
-            // Optionally include minimal template context (just section count and position info)
-            if (fullTemplateContext) {
-                promptText = `TEMPLATE CONTEXT: This is section in a template with the following overall structure:\n${fullTemplateContext}\n\n${promptText}`;
+        for (let i = 0; i < modelQueue.length; i++) {
+            const currentModel = modelQueue[i];
+            console.log(`[Section API] Attempting generation with model: ${currentModel} (Attempt ${i + 1}/${modelQueue.length})`);
+            try {
+                const model = ai.getGenerativeModel({
+                    model: currentModel,
+                    systemInstruction: SECTION_EDIT_PROMPT,
+                });
+
+                // Build a concise prompt with only the section context
+                let promptText = `CURRENT SECTION MJML:\n${sectionMjml}\n\nUSER INSTRUCTION:\n${instruction}\n\nReturn ONLY the modified <mj-section>...</mj-section> block.`;
+
+                // Optionally include minimal template context (just section count and position info)
+                if (fullTemplateContext) {
+                    promptText = `TEMPLATE CONTEXT: This is section in a template with the following overall structure:\n${fullTemplateContext}\n\n${promptText}`;
+                }
+
+                const parts: Part[] = [{ text: promptText }];
+                const currentMessage: Content = { role: "user", parts };
+
+                const result = await model.generateContent({ contents: [currentMessage] });
+                sectionCode = result.response.text() || "";
+                resolvedModel = currentModel;
+
+                console.log("[Section API] Gemini OK, response length:", sectionCode.length);
+
+                // Clean any markdown fences
+                sectionCode = sectionCode.replace(/```(mjml|html|xml)?\n?/g, "").replace(/```$/m, "").trim();
+
+                // Validate it starts with <mj-section
+                if (!sectionCode.toLowerCase().includes("<mj-section")) {
+                    return NextResponse.json(
+                        { error: "AI returned invalid section markup. Please try again." },
+                        { status: 422 }
+                    );
+                }
+
+                // If succeeded, break out of loop
+                lastError = null;
+                break;
+
+            } catch (genError: unknown) {
+                console.error(`[Section API] Gemini error with model ${currentModel}:`, genError);
+                lastError = genError;
+
+                const errObj = genError as { message?: string; status?: number };
+                const errMsg = errObj?.message || String(genError);
+                const status = errObj?.status || 500;
+
+                const isTransient = 
+                    status === 503 || 
+                    status === 429 || 
+                    errMsg.includes("503") || 
+                    errMsg.includes("429") || 
+                    errMsg.toLowerCase().includes("quota") || 
+                    errMsg.toLowerCase().includes("demand") || 
+                    errMsg.toLowerCase().includes("overloaded") || 
+                    errMsg.toLowerCase().includes("unavailable") || 
+                    errMsg.toLowerCase().includes("resource_exhausted");
+
+                if (isTransient && i < modelQueue.length - 1) {
+                    console.warn(`[Section API] Model ${currentModel} failed. Trying fallback model: ${modelQueue[i + 1]}`);
+                    continue;
+                } else {
+                    break;
+                }
             }
+        }
 
-            const parts: Part[] = [{ text: promptText }];
-            const currentMessage: Content = { role: "user", parts };
-
-            const result = await model.generateContent({ contents: [currentMessage] });
-            let sectionCode = result.response.text() || "";
-
-            console.log("[Section API] Gemini OK, response length:", sectionCode.length);
-
-            // Clean any markdown fences
-            sectionCode = sectionCode.replace(/```(mjml|html|xml)?\n?/g, "").replace(/```$/m, "").trim();
-
-            // Validate it starts with <mj-section
-            if (!sectionCode.toLowerCase().includes("<mj-section")) {
-                return NextResponse.json(
-                    { error: "AI returned invalid section markup. Please try again." },
-                    { status: 422 }
-                );
-            }
-
-            return NextResponse.json({ sectionMjml: sectionCode });
-
-        } catch (genError: unknown) {
-            console.error("[Section API] Gemini error:", genError);
-            const errObj = genError as { message?: string; status?: number };
-            const errMsg = errObj?.message || String(genError);
+        if (lastError) {
+            console.error("[Section API] Final Gemini section execution failure:", lastError);
+            const errObj = lastError as { message?: string; status?: number };
+            const errMsg = errObj?.message || String(lastError);
             const status = errObj?.status || 500;
 
             if (status === 429 || errMsg.includes("429")) {
@@ -79,6 +132,8 @@ export async function POST(req: NextRequest) {
 
             return NextResponse.json({ error: errMsg, code: "GENERATION_FAILED" }, { status: 500 });
         }
+
+        return NextResponse.json({ sectionMjml: sectionCode, modelUsed: resolvedModel });
 
     } catch (error: unknown) {
         const msg = error instanceof Error ? error.message : String(error);

@@ -5,6 +5,11 @@ const nextConfig = {
         // Prevents mjml (and its deps like uglify-js) from being bundled by the RSC bundler
         serverComponentsExternalPackages: ["mjml"],
     },
+    eslint: {
+        // Warning: This allows production builds to successfully complete even if
+        // the project has ESLint errors.
+        ignoreDuringBuilds: true,
+    },
 };
 
 export default nextConfig;

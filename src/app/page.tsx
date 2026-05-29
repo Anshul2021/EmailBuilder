@@ -4,10 +4,11 @@ import { useState, useRef, useCallback, useEffect } from "react";
 import { PromptEditor } from "@/components/PromptEditor";
 import { LivePreview } from "@/components/LivePreview";
 import { useCredits } from "@/hooks/useCredits";
-import { X, AlertCircle } from "lucide-react";
+import { X, AlertCircle, Sparkles, Check } from "lucide-react";
 import { SAMPLE_TEMPLATE } from "@/lib/sampleTemplate";
 import { motion } from "framer-motion";
 import { HistoryPanel } from "@/components/HistoryPanel";
+import { PreviewModal } from "@/components/PreviewModal";
 import { saveTemplate, TemplateRecord } from "@/lib/supabaseService";
 import { getSection, replaceMjmlSection } from "@/lib/mjmlParser";
 import {
@@ -34,7 +35,20 @@ export default function Home() {
   const [isPromptCollapsed, setIsPromptCollapsed] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
   const [isSectionEditing, setIsSectionEditing] = useState(false);
+  const [selectedModel, setSelectedModel] = useState<string>("gemini-2.5-flash");
+  const [infoMsg, setInfoMsg] = useState<string | null>(null);
+  const [successMsg, setSuccessMsg] = useState<string | null>(null);
+  const [showPreviewModal, setShowPreviewModal] = useState(false);
+  const [isSharing, setIsSharing] = useState(false);
   const { credits, totalCredits, percentage, deductCredits } = useCredits();
+
+  // Auto-clear success messages after 5 seconds
+  useEffect(() => {
+    if (successMsg) {
+      const timer = setTimeout(() => setSuccessMsg(null), 5000);
+      return () => clearTimeout(timer);
+    }
+  }, [successMsg]);
 
   // ── MJML Tree State ──
   const [mjmlTree, setMjmlTree] = useState<MjmlNode | null>(null);
@@ -92,6 +106,7 @@ export default function Home() {
     setLoadingType("generating");
     setLoading(true);
     setErrorMsg(null);
+    setInfoMsg(null);
     editedHtmlRef.current = "";
     try {
       const resp = await fetch("/api/generate", {
@@ -108,6 +123,20 @@ export default function Home() {
 
       setHtmlContent(data.html);
       setMjml(data.mjml);
+
+      // Check if a fallback model was used
+      if (data.modelUsed && data.modelUsed !== model) {
+        const modelLabels: Record<string, string> = {
+          "gemini-3.5-flash": "Gemini 3.5 Flash",
+          "gemini-2.5-flash": "Gemini 2.5 Flash",
+          "gemini-2.0-flash": "Gemini 2.0 Flash",
+          "gemini-1.5-pro": "Gemini 1.5 Pro",
+          "gemini-1.5-flash": "Gemini 1.5 Flash"
+        };
+        const requestedLabel = modelLabels[model] || model;
+        const usedLabel = modelLabels[data.modelUsed] || data.modelUsed;
+        setInfoMsg(`"${requestedLabel}" was overloaded. Automatically fell back to "${usedLabel}" to complete your request.`);
+      }
 
       const userMessageText = prompt || "Image reference";
       setMessages(prev => [
@@ -136,6 +165,7 @@ export default function Home() {
 
     setIsSectionEditing(true);
     setErrorMsg(null);
+    setInfoMsg(null);
 
     // Set section edit state
     const sections = mjmlTree ? getVisibleSections(mjmlTree) : [];
@@ -148,11 +178,25 @@ export default function Home() {
       const resp = await fetch("/api/generate-section", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ sectionMjml, instruction, model: "gemini-2.5-flash" }),
+        body: JSON.stringify({ sectionMjml, instruction, model: selectedModel }),
       });
 
       const data = await resp.json();
       if (data.error) throw new Error(data.error);
+
+      // Check if a fallback model was used
+      if (data.modelUsed && data.modelUsed !== selectedModel) {
+        const modelLabels: Record<string, string> = {
+          "gemini-3.5-flash": "Gemini 3.5 Flash",
+          "gemini-2.5-flash": "Gemini 2.5 Flash",
+          "gemini-2.0-flash": "Gemini 2.0 Flash",
+          "gemini-1.5-pro": "Gemini 1.5 Pro",
+          "gemini-1.5-flash": "Gemini 1.5 Flash"
+        };
+        const requestedLabel = modelLabels[selectedModel] || selectedModel;
+        const usedLabel = modelLabels[data.modelUsed] || data.modelUsed;
+        setInfoMsg(`"${requestedLabel}" was overloaded. Automatically fell back to "${usedLabel}" for section edit.`);
+      }
 
       const updatedMjml = replaceMjmlSection(mjml, sectionIndex, data.sectionMjml);
       const compiled = await compileMjml(updatedMjml);
@@ -185,7 +229,7 @@ export default function Home() {
     } finally {
       setIsSectionEditing(false);
     }
-  }, [mjml, mjmlTree, deductCredits]);
+  }, [mjml, mjmlTree, deductCredits, selectedModel]);
 
   // ── Section structural operations (from preview) ──
   const handleSectionDuplicate = useCallback(async (sectionIndex: number) => {
@@ -368,6 +412,109 @@ export default function Home() {
     }
   };
 
+  const copyToClipboard = async (text: string): Promise<boolean> => {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      try {
+        await navigator.clipboard.writeText(text);
+        return true;
+      } catch (e) {
+        console.warn("navigator.clipboard failed, trying fallback:", e);
+      }
+    }
+
+    try {
+      const textArea = document.createElement("textarea");
+      textArea.value = text;
+      textArea.style.top = "0";
+      textArea.style.left = "0";
+      textArea.style.position = "fixed";
+      document.body.appendChild(textArea);
+      textArea.focus();
+      textArea.select();
+      const successful = document.execCommand("copy");
+      document.body.removeChild(textArea);
+      return successful;
+    } catch (err) {
+      console.error("Fallback clipboard copy failed:", err);
+      return false;
+    }
+  };
+
+  const handleSharePreview = async () => {
+    const content = editedHtmlRef.current || htmlContent;
+    if (!content || !mjml) {
+      setErrorMsg("No template to share. Generate one first!");
+      return;
+    }
+
+    setIsSharing(true);
+    setErrorMsg(null);
+    setSuccessMsg(null);
+
+    try {
+      const cleanedContent = cleanHtmlForExport(content);
+      const match = typeof mjml === "string" ? mjml.match(/<mj-title>([^<]+)<\/mj-title>/i) : null;
+      const title = match ? match[1].trim() : "Shared Preview";
+      
+      const record = await saveTemplate(title, mjml, cleanedContent);
+      if (!record) throw new Error("Failed to save template for sharing.");
+
+      const shareUrl = `${window.location.origin}/preview/${record.id}`;
+      const copied = await copyToClipboard(shareUrl);
+      if (copied) {
+        setSuccessMsg("Preview link copied.");
+      } else {
+        setErrorMsg(`Failed to copy automatically. Link: ${shareUrl}`);
+      }
+    } catch (err: unknown) {
+      console.error(err);
+      setErrorMsg(err instanceof Error ? err.message : "Failed to generate shareable preview link.");
+    } finally {
+      setIsSharing(false);
+    }
+  };
+
+
+  const handleDownloadEml = () => {
+    const content = editedHtmlRef.current || htmlContent;
+    if (!content) {
+      setErrorMsg("No template content to download.");
+      return;
+    }
+
+    try {
+      const match = typeof mjml === "string" ? mjml.match(/<mj-title>([^<]+)<\/mj-title>/i) : null;
+      const subject = match ? match[1].trim() : "Test Email";
+      const cleanedContent = cleanHtmlForExport(content);
+
+      const emlLines = [
+        "From: Email Builder <noreply@example.com>",
+        "To: recipient@example.com",
+        `Subject: ${subject}`,
+        "MIME-Version: 1.0",
+        'Content-Type: text/html; charset="utf-8"',
+        "Content-Transfer-Encoding: 7bit",
+        "",
+        cleanedContent
+      ];
+
+      const emlString = emlLines.join("\r\n");
+      const blob = new Blob([emlString], { type: "message/rfc822" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "test-email.eml";
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      setSuccessMsg("EML download started.");
+    } catch (err: unknown) {
+      console.error(err);
+      setErrorMsg("Failed to generate EML file.");
+    }
+  };
+
   const handleSelectHistory = (template: TemplateRecord) => {
     editedHtmlRef.current = "";
     setHtmlContent(template.html);
@@ -394,8 +541,6 @@ export default function Home() {
           onGenerate={handleGenerate}
           isLoading={loading}
           hasTemplate={!!mjml}
-          onCopyMjml={handleCopyMjml}
-          onExportHtml={handleExportHtml}
           credits={credits}
           totalCredits={totalCredits}
           percentage={percentage}
@@ -403,6 +548,8 @@ export default function Home() {
           onLoadSample={handleLoadSample}
           isCollapsed={isPromptCollapsed}
           onToggleCollapse={() => setIsPromptCollapsed(v => !v)}
+          selectedModel={selectedModel}
+          onModelChange={setSelectedModel}
         />
       </motion.div>
 
@@ -418,6 +565,26 @@ export default function Home() {
             </button>
           </div>
         )}
+        {/* Info/Fallback Banner */}
+        {infoMsg && (
+          <div className="absolute top-3 left-1/2 -translate-x-1/2 z-50 flex items-start gap-3 bg-amber-50 border border-amber-200 text-amber-800 text-xs font-medium px-4 py-3 rounded-xl shadow-lg max-w-[540px] animate-slide-up">
+            <Sparkles className="w-4 h-4 mt-0.5 shrink-0 text-amber-500" />
+            <span className="flex-1 leading-relaxed">{infoMsg}</span>
+            <button onClick={() => setInfoMsg(null)} className="shrink-0 -mt-0.5 p-0.5 rounded hover:bg-amber-100 transition-colors">
+              <X className="w-3.5 h-3.5 text-amber-500" />
+            </button>
+          </div>
+        )}
+        {/* Success Banner */}
+        {successMsg && (
+          <div className="absolute top-3 left-1/2 -translate-x-1/2 z-50 flex items-start gap-3 bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-medium px-4 py-3 rounded-xl shadow-lg max-w-[540px] animate-slide-up">
+            <Check className="w-4 h-4 mt-0.5 shrink-0 text-emerald-500" />
+            <span className="flex-1 leading-relaxed">{successMsg}</span>
+            <button onClick={() => setSuccessMsg(null)} className="shrink-0 -mt-0.5 p-0.5 rounded hover:bg-emerald-100 transition-colors">
+              <X className="w-3.5 h-3.5 text-emerald-500" />
+            </button>
+          </div>
+        )}
         <LivePreview
           html={htmlContent}
           mjml={mjml}
@@ -427,6 +594,10 @@ export default function Home() {
           onCopyMjml={handleCopyMjml}
           onExportHtml={handleExportHtml}
           onSaveTemplate={handleSaveToSupabase}
+          onPreview={() => setShowPreviewModal(true)}
+          onSharePreview={handleSharePreview}
+          onDownloadHtml={handleExportHtml}
+          onDownloadEml={handleDownloadEml}
           onOpenHistory={() => setShowHistory(true)}
           onSectionEdit={handleSectionEdit}
           onSectionDuplicate={handleSectionDuplicate}
@@ -447,6 +618,7 @@ export default function Home() {
           onLayerMove={handleLayerMove}
           onLayerAiEdit={handleLayerAiEdit}
           hoveredLayerNodeId={hoveredLayerNodeId}
+          isSharing={isSharing}
         />
       </div>
       </main>
@@ -456,6 +628,19 @@ export default function Home() {
         <HistoryPanel 
           onClose={() => setShowHistory(false)} 
           onSelect={handleSelectHistory} 
+        />
+      )}
+
+      {/* Preview Modal */}
+      {showPreviewModal && (
+        <PreviewModal
+          isOpen={showPreviewModal}
+          onClose={() => setShowPreviewModal(false)}
+          html={cleanHtmlForExport(editedHtmlRef.current || htmlContent)}
+          title={(() => {
+            const match = typeof mjml === "string" ? mjml.match(/<mj-title>([^<]+)<\/mj-title>/i) : null;
+            return match ? match[1].trim() : "Email Preview";
+          })()}
         />
       )}
     </div>

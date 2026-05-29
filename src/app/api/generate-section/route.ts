@@ -108,8 +108,8 @@ export async function POST(req: NextRequest) {
                     errMsg.toLowerCase().includes("unavailable") || 
                     errMsg.toLowerCase().includes("resource_exhausted");
 
-                if (isTransient && i < modelQueue.length - 1) {
-                    console.warn(`[Section API] Model ${currentModel} failed. Trying fallback model: ${modelQueue[i + 1]}`);
+                if (i < modelQueue.length - 1) {
+                    console.warn(`[Section API] Model ${currentModel} failed (${errMsg}). Trying fallback model: ${modelQueue[i + 1]}`);
                     continue;
                 } else {
                     break;

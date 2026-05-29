@@ -174,14 +174,29 @@ export interface GeminiModel {
 
 export const GEMINI_MODELS: GeminiModel[] = [
   {
-    label: "Gemini 2.5 Flash",
-    value: "gemini-2.5-flash",
-    description: "Fast and reliable for email generation"
-  },
-  {
     label: "Gemini 3.5 Flash",
     value: "gemini-3.5-flash",
-    description: "Newer model for better quality and reasoning"
+    description: "Newest model for advanced reasoning (falls back if unavailable)"
+  },
+  {
+    label: "Gemini 2.5 Flash",
+    value: "gemini-2.5-flash",
+    description: "Fast and reliable model (falls back if unavailable)"
+  },
+  {
+    label: "Gemini 2.0 Flash",
+    value: "gemini-2.0-flash",
+    description: "Highly stable and fast standard model"
+  },
+  {
+    label: "Gemini 1.5 Pro",
+    value: "gemini-1.5-pro",
+    description: "Complex reasoning and larger context"
+  },
+  {
+    label: "Gemini 1.5 Flash",
+    value: "gemini-1.5-flash",
+    description: "Lightweight and efficient model"
   }
 ];
 

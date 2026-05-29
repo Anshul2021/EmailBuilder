@@ -12,6 +12,7 @@
     "@fontsource/plus-jakarta-sans": "^5.2.8",
     "@google/generative-ai": "^0.24.1",
     "@supabase/supabase-js": "^2.99.0",
+    "@vercel/analytics": "^2.0.1",
     "clsx": "^2.1.1",
     "framer-motion": "^12.35.2",
     "lucide-react": "^0.577.0",

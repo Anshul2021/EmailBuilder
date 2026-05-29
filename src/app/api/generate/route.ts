@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { GoogleGenerativeAI, Part, Content } from "@google/generative-ai";
 import { SYSTEM_PROMPT, GEMINI_MODELS } from "@/lib/prompts";
 import { resolvePexelsImages } from "@/lib/pexels";
+import { getClientIp, getUsage, incrementUsage } from "@/lib/rateLimiter";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -56,6 +57,16 @@ export async function POST(req: NextRequest) {
                 const compileMsg = compileError instanceof Error ? compileError.message : String(compileError);
                 return NextResponse.json({ error: "Failed to compile MJML", details: compileMsg }, { status: 500 });
             }
+        }
+
+        // Apply rate limit for actual AI generation
+        const ip = getClientIp(req);
+        const usage = getUsage(ip);
+        if (usage.remaining <= 0) {
+            return NextResponse.json({
+                error: "Daily generation limit reached. Please try again tomorrow.",
+                code: "LIMIT_EXCEEDED"
+            }, { status: 429 });
         }
 
         // Validate the model against the allowed GEMINI_MODELS list
@@ -154,8 +165,8 @@ Return the complete updated MJML. Modify only what was requested, preserve every
                     errMsg.toLowerCase().includes("unavailable") || 
                     errMsg.toLowerCase().includes("resource_exhausted");
 
-                if (isTransient && i < modelQueue.length - 1) {
-                    console.warn(`[API] Model ${currentModel} failed. Trying fallback model: ${modelQueue[i + 1]}`);
+                if (i < modelQueue.length - 1) {
+                    console.warn(`[API] Model ${currentModel} failed (${errMsg}). Trying fallback model: ${modelQueue[i + 1]}`);
                     continue;
                 } else {
                     // Non-transient or last model in queue: exit loop and handle the error
@@ -213,8 +224,17 @@ Return the complete updated MJML. Modify only what was requested, preserve every
             });
 
             if (errors?.length > 0) console.warn("[API] MJML warnings:", errors.length);
+            
+            // Increment usage limit only on successful generation
+            const updatedUsage = incrementUsage(ip);
+
             // Return the ORIGINAL mjml (clean) but HTML with markers for section detection and the model that succeeded
-            return NextResponse.json({ mjml: mjmlCode, html, modelUsed: resolvedModel });
+            return NextResponse.json({ 
+                mjml: mjmlCode, 
+                html, 
+                modelUsed: resolvedModel,
+                usage: updatedUsage
+            });
 
         } catch (compileError: unknown) {
             const compileMsg = compileError instanceof Error ? compileError.message : String(compileError);

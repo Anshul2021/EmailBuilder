@@ -257,6 +257,28 @@ export function LivePreview({
         }
     }, [hoveredLayerNodeId, selectedLayerNodeId, mjmlTree]);
 
+    // Sync loading state to iframe elements
+    useEffect(() => {
+        const iframe = iframeRef.current;
+        const doc = iframe?.contentDocument;
+        if (!doc || !mjmlTree) return;
+
+        const bodyNode = mjmlTree.children.find(c => c.type === "body") || mjmlTree;
+        const sections = bodyNode.children.filter(c => c.type === "section" && !c.isHidden);
+
+        sections.forEach((sectionNode, idx) => {
+            const el = doc.querySelector(`[data-section-index="${idx}"]`) as HTMLElement
+                || doc.querySelector(`.ag-section-${idx}`) as HTMLElement;
+            if (el) {
+                const editState = sectionEditStates.get(sectionNode.id);
+                if (editState === "processing") {
+                    el.classList.add("ag-section-loading");
+                } else {
+                    el.classList.remove("ag-section-loading");
+                }
+            }
+        });
+    }, [sectionEditStates, mjmlTree, html]);
     // Helper to propagate iframe DOM changes to parent
     const propagateChanges = useCallback(() => {
         const doc = iframeRef.current?.contentDocument;
@@ -321,7 +343,7 @@ export function LivePreview({
             const style = doc.createElement("style");
             style.id = styleId;
             style.innerHTML = `
-                p, h1, h2, h3, h4, h5, h6, td, span, a {
+                p, h1, h2, h3, h4, h5, h6, td, tr, table, tbody, div, span, a {
                     cursor: pointer !important;
                     transition: outline 0.15s ease;
                 }
@@ -331,7 +353,7 @@ export function LivePreview({
                     display: inline-block;
                     object-fit: cover;
                 }
-                p:hover, h1:hover, h2:hover, h3:hover, h4:hover, h5:hover, h6:hover, td:hover, span:hover, a:hover {
+                p:hover, h1:hover, h2:hover, h3:hover, h4:hover, h5:hover, h6:hover, td:hover, tr:hover, table:hover, tbody:hover, div:hover, span:hover, a:hover {
                     outline: 1px dashed #c4b5fd !important;
                     outline-offset: 2px;
                 }
@@ -386,6 +408,31 @@ export function LivePreview({
                     outline: 2px dashed #a78bfa !important;
                     outline-offset: -2px;
                     position: relative;
+                }
+
+                /* Section loading state */
+                .ag-section-loading {
+                    position: relative !important;
+                    pointer-events: none !important;
+                }
+                .ag-section-loading::after {
+                    content: "" !important;
+                    position: absolute !important;
+                    inset: 0 !important;
+                    background: linear-gradient(
+                        90deg,
+                        rgba(245, 243, 255, 0.85) 25%,
+                        rgba(237, 233, 254, 0.95) 37%,
+                        rgba(245, 243, 255, 0.85) 63%
+                    ) !important;
+                    background-size: 400% 100% !important;
+                    animation: ag-skeleton-loading 1.4s ease infinite !important;
+                    z-index: 10 !important;
+                    border-radius: 4px !important;
+                }
+                @keyframes ag-skeleton-loading {
+                    0% { background-position: 100% 50%; }
+                    100% { background-position: 0% 50%; }
                 }
 
                 .ag-delete-handle {
@@ -616,6 +663,41 @@ export function LivePreview({
         }
     }, [saveVersion, applyHtmlToIframe]);
 
+    // Global keyboard shortcuts (Undo / Redo) for the main window
+    useEffect(() => {
+        const handleMainKeyDown = (e: KeyboardEvent) => {
+            const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0;
+            const modifier = isMac ? e.metaKey : e.ctrlKey;
+            
+            // Undo: Ctrl+Z / Cmd+Z
+            if (modifier && e.key.toLowerCase() === "z" && !e.shiftKey) {
+                const active = document.activeElement;
+                const isInput = active && (active.tagName === "INPUT" || active.tagName === "TEXTAREA" || active.hasAttribute("contenteditable"));
+                
+                if (!isInput || active.classList.contains("ql-editor")) {
+                    e.preventDefault();
+                    undo();
+                }
+            }
+            
+            // Redo: Ctrl+Y / Cmd+Y / Ctrl+Shift+Z / Cmd+Shift+Z
+            if ((modifier && e.key.toLowerCase() === "y") || (modifier && e.shiftKey && e.key.toLowerCase() === "z")) {
+                const active = document.activeElement;
+                const isInput = active && (active.tagName === "INPUT" || active.tagName === "TEXTAREA" || active.hasAttribute("contenteditable"));
+                
+                if (!isInput || active.classList.contains("ql-editor")) {
+                    e.preventDefault();
+                    redo();
+                }
+            }
+        };
+        
+        window.addEventListener("keydown", handleMainKeyDown);
+        return () => {
+            window.removeEventListener("keydown", handleMainKeyDown);
+        };
+    }, [undo, redo]);
+
     // ── Section hover detection ──
     // Walk up the DOM from the target element looking for an element
     // with ag-section-N class (set by API route during MJML compilation).
@@ -655,7 +737,7 @@ export function LivePreview({
 
         injectIframeStyles(doc);
 
-        const EDITABLE_TAGS = ["P", "DIV", "H1", "H2", "H3", "H4", "H5", "H6", "TD", "SPAN", "A", "STRONG", "B", "I", "EM"];
+        const EDITABLE_TAGS = ["P", "DIV", "H1", "H2", "H3", "H4", "H5", "H6", "TD", "TR", "TABLE", "TBODY", "SPAN", "A", "STRONG", "B", "I", "EM"];
 
         const clearSelection = () => {
             if (selectedElementRef.current) {
@@ -679,11 +761,15 @@ export function LivePreview({
                 e.preventDefault();
                 redo();
             } else if ((e.key === "Delete" || e.key === "Backspace") && selectedElementRef.current && selectedElementRef.current.contentEditable !== "true") {
-                e.preventDefault();
-                saveVersion(iframeRef.current?.contentDocument?.documentElement.outerHTML || "");
-                selectedElementRef.current.remove();
-                propagateChanges();
-                clearSelection();
+                const tag = selectedElementRef.current.tagName.toUpperCase();
+                const isStructural = ["TR", "TD", "TABLE", "DIV", "TBODY", "THEAD", "TFOOT"].includes(tag);
+                if (!isStructural) {
+                    e.preventDefault();
+                    saveVersion(iframeRef.current?.contentDocument?.documentElement.outerHTML || "");
+                    selectedElementRef.current.remove();
+                    propagateChanges();
+                    clearSelection();
+                }
             }
         };
         win.addEventListener("keydown", handleGlobalKeyDown);
@@ -965,7 +1051,9 @@ export function LivePreview({
                     borderColor: rgbToHex(cs.borderColor) || "black",
 
                     height: cs.height || "",
-                    content: target.innerHTML || target.textContent || "",
+                    content: ["TR", "TD", "TABLE", "DIV", "TBODY", "THEAD", "TFOOT"].includes(target.tagName.toUpperCase())
+                        ? (target.textContent?.trim() || "")
+                        : (target.innerHTML || target.textContent || ""),
                     elementTag: target.tagName.toLowerCase(),
                 });
                 setHasSelection(true);
@@ -1146,7 +1234,35 @@ export function LivePreview({
             const next = { ...prev, content: contentStr };
             const el = selectedElementRef.current;
             if (el && !next.isImage) {
-                el.innerHTML = contentStr;
+                const isStructural = ["TR", "TD", "TABLE", "DIV", "TBODY", "THEAD", "TFOOT"].includes(el.tagName.toUpperCase());
+                
+                if (!isStructural && el.children.length === 0) {
+                    el.innerHTML = contentStr;
+                } else {
+                    // Update text nodes recursively to preserve HTML elements/layout
+                    const textNodes: Text[] = [];
+                    const walk = (node: Node) => {
+                        if (node.nodeType === 3) { // Node.TEXT_NODE
+                            textNodes.push(node as Text);
+                        } else {
+                            if (node.nodeName !== "SCRIPT" && node.nodeName !== "STYLE") {
+                                node.childNodes.forEach(walk);
+                            }
+                        }
+                    };
+                    walk(el);
+
+                    if (textNodes.length > 0) {
+                        // Set the new text to the first text node, and clear the rest
+                        textNodes[0].nodeValue = contentStr;
+                        for (let i = 1; i < textNodes.length; i++) {
+                            textNodes[i].nodeValue = "";
+                        }
+                    } else {
+                        // If no text nodes exist, append a new text node
+                        el.appendChild(el.ownerDocument.createTextNode(contentStr));
+                    }
+                }
                 reapplyStyles(el, next);
                 propagateChanges();
             }
@@ -1305,8 +1421,6 @@ export function LivePreview({
             <PreviewToolbar
                 viewMode={viewMode}
                 setViewMode={setViewMode}
-                showEditPanel={showEditPanel}
-                setShowEditPanel={setShowEditPanel}
                 undo={undo}
                 redo={redo}
                 reset={reset}
@@ -1433,6 +1547,7 @@ export function LivePreview({
                             className="shrink-0 relative border-l border-slate-200 bg-white h-full overflow-hidden"
                             style={{ width: panelWidth }}
                         >
+                            {/* Drag resize handle */}
                             <div
                                 onMouseDown={handleDragStart}
                                 className="absolute left-0 top-0 bottom-0 w-1.5 cursor-col-resize z-20 group flex items-center justify-center hover:bg-violet-100 transition-colors"
@@ -1440,6 +1555,17 @@ export function LivePreview({
                             >
                                 <div className="w-0.5 h-8 bg-slate-300 group-hover:bg-violet-400 rounded-full transition-colors" />
                             </div>
+
+                            {/* ── Collapse arrow tab ── */}
+                            <button
+                                onClick={() => setShowEditPanel(false)}
+                                title="Collapse panel"
+                                className="absolute left-0 top-1/2 -translate-y-1/2 -translate-x-full z-30 flex items-center justify-center w-5 h-10 bg-white border border-r-0 border-slate-200 rounded-l-lg shadow-sm hover:bg-violet-50 hover:border-violet-200 transition-all group"
+                            >
+                                <svg className="w-3 h-3 text-slate-400 group-hover:text-violet-500 transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                                    <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+                                </svg>
+                            </button>
 
                             <div className="pl-1.5 h-full" style={{ width: panelWidth }}>
                                 <PropertiesPanel
@@ -1467,6 +1593,25 @@ export function LivePreview({
                         </motion.div>
                     )}
                 </AnimatePresence>
+
+                {/* ── Re-open tab when panel is collapsed ── */}
+                {!showEditPanel && html && (
+                    <motion.button
+                        initial={{ opacity: 0, x: 8 }}
+                        animate={{ opacity: 1, x: 0 }}
+                        exit={{ opacity: 0, x: 8 }}
+                        transition={{ duration: 0.18 }}
+                        onClick={() => setShowEditPanel(true)}
+                        title="Open properties panel"
+                        className="shrink-0 flex flex-col items-center justify-center w-5 h-full border-l border-slate-200 bg-white hover:bg-violet-50 hover:border-violet-200 transition-all group cursor-pointer"
+                    >
+                        <div className="flex flex-col items-center gap-1.5">
+                            <svg className="w-3 h-3 text-slate-400 group-hover:text-violet-500 transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
+                            </svg>
+                        </div>
+                    </motion.button>
+                )}
             </div>
         </div>
     );

@@ -9,8 +9,6 @@ import { motion, AnimatePresence } from "framer-motion";
 interface PreviewToolbarProps {
     viewMode: "desktop" | "mobile";
     setViewMode: (mode: "desktop" | "mobile") => void;
-    showEditPanel: boolean;
-    setShowEditPanel: React.Dispatch<React.SetStateAction<boolean>>;
     undo: () => void;
     redo: () => void;
     reset: () => void;
@@ -33,8 +31,6 @@ interface PreviewToolbarProps {
 export function PreviewToolbar({
     viewMode,
     setViewMode,
-    showEditPanel,
-    setShowEditPanel,
     undo,
     redo,
     reset,
@@ -95,25 +91,6 @@ export function PreviewToolbar({
                         </Tooltip>
                     ))}
                 </div>
-
-                <div className="w-px h-5 bg-slate-200" />
-
-                {html && (
-                    <Tooltip content="Show Properties Panel" position="bottom">
-                        <button
-                            onClick={() => setShowEditPanel(v => !v)}
-                            className={clsx(
-                                "flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg transition-all",
-                                showEditPanel
-                                    ? "bg-violet-100 text-violet-700 border border-violet-200"
-                                    : "text-slate-500 hover:bg-slate-100 border border-transparent"
-                            )}
-                        >
-                            <PencilLine className="w-3.5 h-3.5" />
-                            Properties
-                        </button>
-                    </Tooltip>
-                )}
 
                 <div className="w-px h-5 bg-slate-200" />
 

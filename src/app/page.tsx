@@ -4,6 +4,7 @@ import { useState, useRef, useCallback, useEffect } from "react";
 import { PromptEditor } from "@/components/PromptEditor";
 import { LivePreview } from "@/components/LivePreview";
 import { useCredits } from "@/hooks/useCredits";
+import { track } from "@vercel/analytics";
 import { X, AlertCircle, Sparkles, Check } from "lucide-react";
 import { SAMPLE_TEMPLATE } from "@/lib/sampleTemplate";
 import { motion } from "framer-motion";
@@ -41,6 +42,32 @@ export default function Home() {
   const [showPreviewModal, setShowPreviewModal] = useState(false);
   const [isSharing, setIsSharing] = useState(false);
   const { credits, totalCredits, percentage, deductCredits } = useCredits();
+  const [usage, setUsage] = useState<{ used: number; limit: number; remaining: number } | null>(null);
+
+  // Fetch initial usage count on mount
+  useEffect(() => {
+    fetch("/api/usage")
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.usage) {
+          setUsage(data.usage);
+        }
+      })
+      .catch((err) => console.error("Error fetching usage:", err));
+  }, []);
+
+  const handleResetUsage = async () => {
+    try {
+      const res = await fetch("/api/usage", { method: "POST" });
+      const data = await res.json();
+      if (data.usage) {
+        setUsage(data.usage);
+        setSuccessMsg("Beta usage count reset successfully!");
+      }
+    } catch (err) {
+      console.error("Error resetting usage:", err);
+    }
+  };
 
   // Auto-clear success messages after 5 seconds
   useEffect(() => {
@@ -103,6 +130,7 @@ export default function Home() {
     mimeType: string | null = null,
     model: string = "gemini-2.5-flash"
   ) => {
+    track("Generate Email", { model });
     setLoadingType("generating");
     setLoading(true);
     setErrorMsg(null);
@@ -115,14 +143,29 @@ export default function Home() {
         body: JSON.stringify({ prompt, imageBase64, mimeType, currentMjml: mjml, history: messages, model }),
       });
 
-      const data = await resp.json();
-
-      if (data.error) {
-        throw new Error(data.error);
+      if (!resp.ok) {
+        const text = await resp.text();
+        let errMsg = "Generation failed.";
+        try {
+          const parsed = JSON.parse(text);
+          errMsg = parsed.error || errMsg;
+        } catch {
+          errMsg = text.includes("<pre>")
+            ? text.substring(text.indexOf("<pre>") + 5, text.indexOf("</pre>")).trim()
+            : text.substring(0, 150);
+        }
+        throw new Error(errMsg);
       }
+
+      const data = await resp.json();
 
       setHtmlContent(data.html);
       setMjml(data.mjml);
+
+      if (data.usage) {
+        setUsage(data.usage);
+      }
+      track("Template Generated", { model: data.modelUsed || model });
 
       // Check if a fallback model was used
       if (data.modelUsed && data.modelUsed !== model) {
@@ -181,8 +224,21 @@ export default function Home() {
         body: JSON.stringify({ sectionMjml, instruction, model: selectedModel }),
       });
 
+      if (!resp.ok) {
+        const text = await resp.text();
+        let errMsg = "Section edit failed.";
+        try {
+          const parsed = JSON.parse(text);
+          errMsg = parsed.error || errMsg;
+        } catch {
+          errMsg = text.includes("<pre>")
+            ? text.substring(text.indexOf("<pre>") + 5, text.indexOf("</pre>")).trim()
+            : text.substring(0, 150);
+        }
+        throw new Error(errMsg);
+      }
+
       const data = await resp.json();
-      if (data.error) throw new Error(data.error);
 
       // Check if a fallback model was used
       if (data.modelUsed && data.modelUsed !== selectedModel) {
@@ -337,6 +393,7 @@ export default function Home() {
 
   const handleCopyMjml = () => {
     if (mjml) {
+      track("Export Clicked", { type: "MJML" });
       navigator.clipboard.writeText(mjml);
       alert("MJML copied to clipboard!");
     }
@@ -374,6 +431,8 @@ export default function Home() {
   const handleExportHtml = () => {
     const content = editedHtmlRef.current || htmlContent;
     if (content) {
+      track("Download HTML");
+      track("Export Clicked", { type: "HTML" });
       const cleanedContent = cleanHtmlForExport(content);
       const blob = new Blob([cleanedContent], { type: "text/html" });
       const url = URL.createObjectURL(blob);
@@ -397,6 +456,7 @@ export default function Home() {
     const title = prompt("Enter a name for this template:", "New Template");
     if (title === null) return;
 
+    track("Export Clicked", { type: "Supabase" });
     setLoadingType("saving");
     setLoading(true);
     try {
@@ -447,6 +507,7 @@ export default function Home() {
       return;
     }
 
+    track("Export Clicked", { type: "Share" });
     setIsSharing(true);
     setErrorMsg(null);
     setSuccessMsg(null);
@@ -483,6 +544,8 @@ export default function Home() {
     }
 
     try {
+      track("Download EML");
+      track("Export Clicked", { type: "EML" });
       const match = typeof mjml === "string" ? mjml.match(/<mj-title>([^<]+)<\/mj-title>/i) : null;
       const subject = match ? match[1].trim() : "Test Email";
       const cleanedContent = cleanHtmlForExport(content);
@@ -541,15 +604,14 @@ export default function Home() {
           onGenerate={handleGenerate}
           isLoading={loading}
           hasTemplate={!!mjml}
-          credits={credits}
-          totalCredits={totalCredits}
-          percentage={percentage}
           messages={messages}
           onLoadSample={handleLoadSample}
           isCollapsed={isPromptCollapsed}
           onToggleCollapse={() => setIsPromptCollapsed(v => !v)}
           selectedModel={selectedModel}
           onModelChange={setSelectedModel}
+          usage={usage}
+          onResetUsage={handleResetUsage}
         />
       </motion.div>
 

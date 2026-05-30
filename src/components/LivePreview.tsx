@@ -5,13 +5,14 @@ import { Skeleton } from "primereact/skeleton";
 import { PreviewToolbar } from "./PreviewToolbar";
 import { clsx } from "clsx";
 import { motion, AnimatePresence } from "framer-motion";
-import { MailOpen } from "lucide-react";
+import { MailOpen, FileCode } from "lucide-react";
 import { PropertiesPanel } from "./PropertiesPanel";
 import type { ElementProperties } from "./PropertiesPanel";
 import { SectionControls } from "./SectionControls";
 import { SectionEditBar } from "./SectionEditBar";
 import type { MjmlNode } from "@/lib/mjmlTree";
 import type { SectionEditState } from "./LayerPanel";
+import HandLoading from "@/Assets/HandLoading.gif";
 
 interface LivePreviewProps {
     html: string;
@@ -49,7 +50,29 @@ interface LivePreviewProps {
     hoveredLayerNodeId: string | null;
     onLayerHover: (nodeId: string | null) => void;
     isSharing?: boolean;
+    onLoadSample?: () => void;
 }
+
+const GENERATING_MESSAGES = [
+    "Drafting subject lines that actually get opened...",
+    "Polishing layout blocks for pixel-perfect inbox rendering...",
+    "Testing email responsive structures across 50+ virtual inboxes...",
+    "Spam-proofing copy and balancing image-to-text ratios...",
+    "Optimizing call-to-actions to spark maximum click-through rates...",
+    "Weaving semantic HTML wrappers for seamless dark-mode support...",
+    "Minifying code payloads to keep under the 102KB Gmail clipping limit...",
+    "Polishing call-to-action buttons for irresistible clickability...",
+    "Aligning column structure to withstand Outlook's rendering engine...",
+    "Sprinkling preview-text hooks to boost open rates...",
+    "Curating harmonious typography systems for optimal readability..."
+];
+
+const SAVING_MESSAGES = [
+    "Encrypting layout variables and updating template history...",
+    "Polishing design tokens and backing up block schemas...",
+    "Synchronizing template versions with Supabase cloud databases...",
+    "Securing email structure configurations for future revisions..."
+];
 
 const DEFAULT_PROPS: ElementProperties = {
     fontSize: 16,
@@ -136,12 +159,29 @@ export function LivePreview({
     hoveredLayerNodeId,
     onLayerHover,
     isSharing = false,
+    onLoadSample,
 }: LivePreviewProps) {
     const [viewMode, setViewMode] = useState<"desktop" | "mobile">("desktop");
     const [showEditPanel, setShowEditPanel] = useState(true);
     const [selectedProps, setSelectedProps] = useState<ElementProperties>(DEFAULT_PROPS);
     const [hasSelection, setHasSelection] = useState(false);
     const [copied, setCopied] = useState(false);
+    const [simulateLoading, setSimulateLoading] = useState(false);
+    const [creativeMessageIndex, setCreativeMessageIndex] = useState(0);
+
+    useEffect(() => {
+        let interval: NodeJS.Timeout;
+        if (isLoading || simulateLoading) {
+            setCreativeMessageIndex(0);
+            const listLength = loadingType === "saving" ? SAVING_MESSAGES.length : GENERATING_MESSAGES.length;
+            interval = setInterval(() => {
+                setCreativeMessageIndex(prev => (prev + 1) % listLength);
+            }, 5000);
+        }
+        return () => {
+            if (interval) clearInterval(interval);
+        };
+    }, [isLoading, simulateLoading, loadingType]);
 
     // Right-panel draggable width
     const [panelWidth, setPanelWidth] = useState(PANEL_DEFAULT_WIDTH);
@@ -360,7 +400,7 @@ export function LivePreview({
                 img:hover {
                     outline: 2px dashed #7c3aed !important;
                     outline-offset: 3px;
-                    filter: brightness(0.95);
+                    filter: brightness(0.3) !important;
                 }
                 .ag-selected {
                     outline: 2px solid #7c3aed !important;
@@ -373,34 +413,66 @@ export function LivePreview({
                 }
                 [contenteditable="true"] {
                     cursor: text !important;
-                    outline: 2px solid #7c3aed !important;
-                    outline-offset: 3px;
-                    border-radius: 2px;
+                    outline: 2.5px solid #7c3aed !important;
+                    outline-offset: 4px;
+                    border-radius: 4px;
                     white-space: pre-wrap;
+                    box-shadow: 0 0 0 6px rgba(124, 58, 237, 0.15) !important;
+                    background-color: rgba(245, 243, 255, 0.3) !important;
+                    transition: outline 0.15s ease, box-shadow 0.15s ease, background-color 0.15s ease !important;
+                    caret-color: #7c3aed !important;
                 }
 
-                .ag-hover-replace-btn {
+                .ag-hover-image-tools {
                     position: absolute;
+                    display: none;
+                    flex-direction: column;
+                    align-items: center;
+                    gap: 6px;
+                    z-index: 1001;
+                    font-family: 'Plus Jakarta Sans', sans-serif !important;
+                }
+                .ag-hover-replace-btn {
                     background: #7c3aed;
                     color: white;
                     border: none;
-                    border-radius: 20px;
-                    padding: 5px 10px;
-                    font-size: 10px;
-                    font-weight: 700;
+                    border-radius: 6px;
+                    padding: 8px 14px;
+                    font-size: 15px !important;
+                    font-weight: 500 !important;
+                    font-family: 'Plus Jakarta Sans', sans-serif !important;
                     cursor: pointer;
-                    z-index: 1001;
-                    box-shadow: 0 4px 10px rgba(124, 58, 237, 0.3);
-                    display: none;
-                    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+                    display: flex;
                     align-items: center;
                     justify-content: center;
-                    transition: background 0.15s ease, transform 0.1s ease;
+                    transition: background 0.15s ease;
                     outline: none;
+                    white-space: nowrap;
                 }
                 .ag-hover-replace-btn:hover {
                     background: #6d28d9;
-                    transform: scale(1.05);
+                }
+                .ag-hover-reset-btn {
+                    background: white;
+                    color: #ef4444;
+                    border: 1px solid #fee2e2;
+                    border-radius: 6px;
+                    padding: 6px 14px;
+                    font-size: 13px !important;
+                    font-weight: 500 !important;
+                    font-family: 'Plus Jakarta Sans', sans-serif !important;
+                    cursor: pointer;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    transition: background 0.15s ease, border-color 0.15s ease;
+                    outline: none;
+                    width: 100%;
+                    box-sizing: border-box;
+                }
+                .ag-hover-reset-btn:hover {
+                    background: #fef2f2;
+                    border-color: #fca5a5;
                 }
 
                 /* Section hover highlight */
@@ -437,76 +509,134 @@ export function LivePreview({
 
                 .ag-delete-handle {
                     position: absolute;
-                    width: 20px;
-                    height: 20px;
+                    width: 28px;
+                    height: 28px;
                     background: #ef4444;
                     color: white;
-                    border: 2px solid white;
-                    border-radius: 4px;
+                    border: 2.5px solid white;
+                    border-radius: 8px;
                     cursor: pointer;
-                    z-index: 1000;
-                    box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+                    z-index: 1002;
+                    box-shadow: 0 4px 12px rgba(239,68,68,0.35), 0 2px 4px rgba(0,0,0,0.12);
                     display: none;
-                    text-align: center;
-                    line-height: 16px;
-                    font-size: 14px;
-                    font-weight: bold;
-                    user-select: none;
-                    font-family: sans-serif;
+                    align-items: center;
+                    justify-content: center;
+                    transition: background 0.15s ease, transform 0.15s ease, box-shadow 0.15s ease;
                 }
-                .ag-delete-handle:hover { background: #dc2626; }
+                .ag-delete-handle:hover {
+                    background: #dc2626;
+                    transform: scale(1.1);
+                    box-shadow: 0 6px 16px rgba(239,68,68,0.45), 0 2px 4px rgba(0,0,0,0.15);
+                }
                 .ag-resize-handle {
                     position: absolute;
-                    width: 12px;
-                    height: 12px;
+                    width: 14px;
+                    height: 14px;
                     background: #7c3aed;
-                    border: 2px solid white;
+                    border: 2.5px solid white;
                     border-radius: 50%;
                     cursor: nwse-resize;
-                    z-index: 1000;
-                    box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+                    z-index: 1002;
+                    box-shadow: 0 2px 6px rgba(124,58,237,0.4);
                     display: none;
+                    transition: transform 0.15s ease;
+                }
+                .ag-resize-handle:hover {
+                    transform: scale(1.2);
                 }
                 .ag-drag-handle {
                     position: absolute;
-                    width: 24px;
-                    height: 24px;
+                    width: 28px;
+                    height: 28px;
                     background: #7c3aed;
-                    border: 2px solid white;
-                    border-radius: 4px;
+                    border: 2.5px solid white;
+                    border-radius: 8px;
                     cursor: grab;
-                    z-index: 1000;
-                    box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+                    z-index: 1002;
+                    box-shadow: 0 4px 12px rgba(124,58,237,0.35), 0 2px 4px rgba(0,0,0,0.12);
                     display: none;
                     color: white;
-                    text-align: center;
-                    line-height: 20px;
-                    font-size: 14px;
-                    user-select: none;
-                    font-family: sans-serif;
+                    align-items: center;
+                    justify-content: center;
+                    transition: background 0.15s ease, transform 0.15s ease, box-shadow 0.15s ease;
+                }
+                .ag-drag-handle:hover {
+                    background: #6d28d9;
+                    transform: scale(1.1);
+                    box-shadow: 0 6px 16px rgba(124,58,237,0.45), 0 2px 4px rgba(0,0,0,0.15);
                 }
                 .ag-drag-handle:active {
                     cursor: grabbing;
+                    transform: scale(0.96);
+                }
+                .ag-edit-handle {
+                    position: absolute;
+                    width: 28px;
+                    height: 28px;
+                    background: #7c3aed;
+                    color: white;
+                    border: 2.5px solid white;
+                    border-radius: 8px;
+                    cursor: pointer;
+                    z-index: 1002;
+                    box-shadow: 0 4px 12px rgba(124,58,237,0.35), 0 2px 4px rgba(0,0,0,0.12);
+                    display: none;
+                    align-items: center;
+                    justify-content: center;
+                    transition: background 0.15s ease, transform 0.15s ease, box-shadow 0.15s ease;
+                }
+                .ag-edit-handle:hover {
+                    background: #6d28d9;
+                    transform: scale(1.1);
+                    box-shadow: 0 6px 16px rgba(124,58,237,0.45), 0 2px 4px rgba(0,0,0,0.15);
                 }
                 .ag-drop-indicator {
                     position: absolute;
-                    height: 4px;
-                    background: #3b82f6;
-                    border-radius: 2px;
+                    height: 3px;
+                    background: linear-gradient(90deg, #7c3aed, #3b82f6);
+                    border-radius: 99px;
                     z-index: 999;
                     display: none;
                     pointer-events: none;
-                    box-shadow: 0 0 4px rgba(59, 130, 246, 0.5);
+                    box-shadow: 0 0 8px rgba(124,58,237,0.5);
+                    transition: top 0.05s ease, left 0.05s ease, width 0.05s ease;
+                }
+                .ag-drop-indicator::before {
+                    content: '';
+                    position: absolute;
+                    left: -4px;
+                    top: 50%;
+                    transform: translateY(-50%);
+                    width: 10px;
+                    height: 10px;
+                    background: #7c3aed;
+                    border-radius: 50%;
+                    box-shadow: 0 0 6px rgba(124,58,237,0.6);
+                }
+                .ag-drop-indicator::after {
+                    content: '';
+                    position: absolute;
+                    right: -4px;
+                    top: 50%;
+                    transform: translateY(-50%);
+                    width: 10px;
+                    height: 10px;
+                    background: #3b82f6;
+                    border-radius: 50%;
+                    box-shadow: 0 0 6px rgba(59,130,246,0.6);
                 }
                 .ag-ghost {
                     position: fixed !important;
                     pointer-events: none !important;
-                    opacity: 0.8 !important;
+                    opacity: 0.75 !important;
                     z-index: 9999 !important;
-                    box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1) !important;
+                    box-shadow: 0 20px 40px -8px rgba(0, 0, 0, 0.2), 0 8px 16px -4px rgba(124, 58, 237, 0.15) !important;
                     transition: none !important;
                     background: white !important;
                     margin: 0 !important;
+                    border-radius: 4px !important;
+                    outline: 2px solid rgba(124,58,237,0.4) !important;
+                    outline-offset: 2px !important;
                 }
                 html::-webkit-scrollbar, body::-webkit-scrollbar, *::-webkit-scrollbar { 
                     display: none !important; width: 0 !important; height: 0 !important;
@@ -532,7 +662,8 @@ export function LivePreview({
             const handle = doc.createElement("div");
             handle.id = "ag-drag-handle";
             handle.className = "ag-drag-handle";
-            handle.innerHTML = "⋮⋮";
+            handle.title = "Drag to reorder";
+            handle.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="display:block;opacity:0.95;"><circle cx="9" cy="5" r="1.5"/><circle cx="15" cy="5" r="1.5"/><circle cx="9" cy="12" r="1.5"/><circle cx="15" cy="12" r="1.5"/><circle cx="9" cy="19" r="1.5"/><circle cx="15" cy="19" r="1.5"/></svg>`;
             doc.body.appendChild(handle);
         }
 
@@ -540,8 +671,17 @@ export function LivePreview({
             const handle = doc.createElement("div");
             handle.id = "ag-delete-handle";
             handle.className = "ag-delete-handle";
-            handle.innerHTML = "×";
             handle.title = "Delete block";
+            handle.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="display:block;"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>`;
+            doc.body.appendChild(handle);
+        }
+
+        if (!doc.getElementById("ag-edit-handle")) {
+            const handle = doc.createElement("div");
+            handle.id = "ag-edit-handle";
+            handle.className = "ag-edit-handle";
+            handle.title = "Edit text inline";
+            handle.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="display:block;"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>`;
             doc.body.appendChild(handle);
         }
         if (!doc.getElementById("ag-drop-indicator")) {
@@ -551,14 +691,37 @@ export function LivePreview({
             doc.body.appendChild(indicator);
         }
 
-        if (!doc.getElementById("ag-hover-replace-btn")) {
-            const btn = doc.createElement("button");
-            btn.id = "ag-hover-replace-btn";
-            btn.className = "ag-hover-replace-btn";
-            btn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 4px; display: inline-block; vertical-align: middle;"><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h7"/><polyline points="16 3 21 3 21 8"/><line x1="21" y1="3" x2="14" y2="10"/></svg>Replace`;
-            btn.title = "Replace Image";
-            doc.body.appendChild(btn);
+        if (!doc.getElementById("ag-hover-image-tools")) {
+            const container = doc.createElement("div");
+            container.id = "ag-hover-image-tools";
+            container.className = "ag-hover-image-tools";
+
+            const replaceBtn = doc.createElement("button");
+            replaceBtn.id = "ag-hover-replace-btn";
+            replaceBtn.className = "ag-hover-replace-btn";
+            replaceBtn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 5px; display: inline-block; vertical-align: middle;"><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h7"/><polyline points="16 3 21 3 21 8"/><line x1="21" y1="3" x2="14" y2="10"/></svg>Replace image`;
+            replaceBtn.title = "Replace Image";
+
+            const resetBtn = doc.createElement("button");
+            resetBtn.id = "ag-hover-reset-btn";
+            resetBtn.className = "ag-hover-reset-btn";
+            resetBtn.innerText = "Reset";
+            resetBtn.title = "Reset image and properties";
+
+            container.appendChild(replaceBtn);
+            container.appendChild(resetBtn);
+            doc.body.appendChild(container);
         }
+
+        // Store original src for image reset
+        doc.querySelectorAll("img").forEach((img) => {
+            if (!img.getAttribute("data-original-src")) {
+                img.setAttribute("data-original-src", img.getAttribute("src") || "");
+            }
+            if (!img.getAttribute("data-original-style")) {
+                img.setAttribute("data-original-style", img.getAttribute("style") || "");
+            }
+        });
 
         // ──── Section detection via css-class markers ────
         // The API route injects css-class="ag-section-N" on each <mj-section>
@@ -593,20 +756,37 @@ export function LivePreview({
             const scrollY = iframe.contentWindow?.scrollY || 0;
 
             const deleteHandle = doc.getElementById("ag-delete-handle");
+            const editHandle = doc.getElementById("ag-edit-handle");
+            const isEditing = el.getAttribute("contenteditable") === "true";
+
+            // Drag handle: top-left corner of element, offset so it sits half-outside
             if (dragHandle && !isBlockDraggingRef.current) {
-                dragHandle.style.left = `${rect.left + scrollX - 12}px`;
-                dragHandle.style.top = `${rect.top + scrollY - 12}px`;
-                dragHandle.style.display = "block";
+                dragHandle.style.left = `${Math.max(0, rect.left + scrollX - 14)}px`;
+                dragHandle.style.top = `${Math.max(0, rect.top + scrollY - 14)}px`;
+                dragHandle.style.display = "flex";
+            } else if (dragHandle) {
+                dragHandle.style.display = "none";
             }
+            // Delete handle: top-right corner of element, offset so it sits half-outside
             if (deleteHandle && !isBlockDraggingRef.current) {
-                deleteHandle.style.left = `${rect.right + scrollX - 8}px`;
-                deleteHandle.style.top = `${rect.top + scrollY - 12}px`;
-                deleteHandle.style.display = "block";
+                deleteHandle.style.left = `${rect.right + scrollX - 14}px`;
+                deleteHandle.style.top = `${Math.max(0, rect.top + scrollY - 14)}px`;
+                deleteHandle.style.display = "flex";
+            } else if (deleteHandle) {
+                deleteHandle.style.display = "none";
+            }
+            // Edit handle: next to drag handle
+            if (editHandle && !isBlockDraggingRef.current && el.tagName !== "IMG" && !isEditing) {
+                editHandle.style.left = `${Math.max(0, rect.left + scrollX + 18)}px`;
+                editHandle.style.top = `${Math.max(0, rect.top + scrollY - 14)}px`;
+                editHandle.style.display = "flex";
+            } else if (editHandle) {
+                editHandle.style.display = "none";
             }
 
             if (resizeHandle && el.tagName === "IMG") {
-                resizeHandle.style.left = `${rect.right + scrollX - 6}px`;
-                resizeHandle.style.top = `${rect.bottom + scrollY - 6}px`;
+                resizeHandle.style.left = `${rect.right + scrollX - 7}px`;
+                resizeHandle.style.top = `${rect.bottom + scrollY - 7}px`;
                 resizeHandle.style.display = "block";
             } else if (resizeHandle) {
                 resizeHandle.style.display = "none";
@@ -616,6 +796,8 @@ export function LivePreview({
             if (dragHandle) dragHandle.style.display = "none";
             const deleteHandle = doc.getElementById("ag-delete-handle");
             if (deleteHandle) deleteHandle.style.display = "none";
+            const editHandle = doc.getElementById("ag-edit-handle");
+            if (editHandle) editHandle.style.display = "none";
         }
     }, []);
 
@@ -721,6 +903,59 @@ export function LivePreview({
         }
         return null;
     }, []);
+
+    const handleGlobalMouseUp = useCallback(() => {
+        const doc = iframeRef.current?.contentDocument;
+        if (!doc) return;
+
+        if (isResizingRef.current) {
+            isResizingRef.current = false;
+            resizeTargetRef.current = null;
+            propagateChanges();
+        }
+
+        if (isBlockDraggingRef.current) {
+            isBlockDraggingRef.current = false;
+
+            const dragTarget = dragTargetRef.current;
+            const dropTarget = dropTargetRef.current;
+            const position = dropPositionRef.current;
+            const ghost = ghostElementRef.current;
+            const dropIndicator = doc.getElementById("ag-drop-indicator");
+
+            if (ghost) ghost.remove();
+            if (dropIndicator) dropIndicator.style.display = "none";
+
+            if (dragTarget) {
+                dragTarget.style.opacity = "";
+                dragTarget.style.outline = "";
+                dragTarget.style.outlineOffset = "";
+
+                if (dropTarget && dropTarget.parentNode) {
+                    try {
+                        if (position === "before") {
+                            dropTarget.parentNode.insertBefore(dragTarget, dropTarget);
+                        } else {
+                            if (dropTarget.nextSibling) {
+                                dropTarget.parentNode.insertBefore(dragTarget, dropTarget.nextSibling);
+                            } else {
+                                dropTarget.parentNode.appendChild(dragTarget);
+                            }
+                        }
+                        saveVersion(doc.documentElement.outerHTML);
+                        propagateChanges();
+                    } catch (err) {
+                        console.error("Failed to reorder element:", err);
+                    }
+                }
+            }
+
+            dragTargetRef.current = null;
+            dropTargetRef.current = null;
+            ghostElementRef.current = null;
+            setTimeout(updateResizeHandlePosition, 10);
+        }
+    }, [propagateChanges, saveVersion, updateResizeHandlePosition]);
 
     // Handle iframe load
     const handleIframeLoad = useCallback(() => {
@@ -860,29 +1095,29 @@ export function LivePreview({
                 setSectionControlsPos(null);
             }
 
-            // Image hover Replace Button positioning
-            const hoverReplaceBtn = doc.getElementById("ag-hover-replace-btn");
+            // Image hover tools container positioning
+            const hoverImageTools = doc.getElementById("ag-hover-image-tools");
             const isOverImg = target.tagName === "IMG";
-            const isOverBtn = target === hoverReplaceBtn || hoverReplaceBtn?.contains(target);
+            const isOverBtn = target === hoverImageTools || hoverImageTools?.contains(target);
 
             if ((isOverImg || isOverBtn) && !isResizingRef.current && !isBlockDraggingRef.current) {
-                const activeImg = isOverImg ? target : (hoverReplaceBtn as any)?._targetImg;
+                const activeImg = isOverImg ? target : (hoverImageTools as any)?._targetImg;
                 if (activeImg) {
                     const rect = activeImg.getBoundingClientRect();
                     const scrollX = win.scrollX;
                     const scrollY = win.scrollY;
-                    if (hoverReplaceBtn) {
-                        const btnWidth = 72;
-                        const btnHeight = 22;
-                        hoverReplaceBtn.style.left = `${rect.left + scrollX + (rect.width - btnWidth) / 2}px`;
-                        hoverReplaceBtn.style.top = `${rect.top + scrollY + (rect.height - btnHeight) / 2}px`;
-                        hoverReplaceBtn.style.display = "flex";
-                        (hoverReplaceBtn as any)._targetImg = activeImg;
+                    if (hoverImageTools) {
+                        const panelWidth = 145;
+                        const panelHeight = 72;
+                        hoverImageTools.style.left = `${rect.left + scrollX + (rect.width - panelWidth) / 2}px`;
+                        hoverImageTools.style.top = `${rect.top + scrollY + (rect.height - panelHeight) / 2}px`;
+                        hoverImageTools.style.display = "flex";
+                        (hoverImageTools as any)._targetImg = activeImg;
                     }
                 }
             } else {
-                if (hoverReplaceBtn) {
-                    hoverReplaceBtn.style.display = "none";
+                if (hoverImageTools) {
+                    hoverImageTools.style.display = "none";
                 }
             }
         });
@@ -906,12 +1141,14 @@ export function LivePreview({
             const target = e.target as HTMLElement;
             const resizeHandle = doc.getElementById("ag-resize-handle");
             const deleteHandle = doc.getElementById("ag-delete-handle");
+            const hoverImageTools = doc.getElementById("ag-hover-image-tools");
             const hoverReplaceBtn = doc.getElementById("ag-hover-replace-btn");
+            const hoverResetBtn = doc.getElementById("ag-hover-reset-btn");
 
-            if ((target === hoverReplaceBtn || hoverReplaceBtn?.contains(target))) {
+            if (target === hoverReplaceBtn || hoverReplaceBtn?.contains(target)) {
                 e.preventDefault();
                 e.stopPropagation();
-                const targetImg = (hoverReplaceBtn as any)._targetImg as HTMLImageElement;
+                const targetImg = (hoverImageTools as any)?._targetImg as HTMLImageElement;
                 if (targetImg) {
                     // Click the image to select it
                     targetImg.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
@@ -922,7 +1159,32 @@ export function LivePreview({
                 return;
             }
 
-            if (target === deleteHandle && selectedElementRef.current) {
+            if (target === hoverResetBtn || hoverResetBtn?.contains(target)) {
+                e.preventDefault();
+                e.stopPropagation();
+                const targetImg = (hoverImageTools as any)?._targetImg as HTMLImageElement;
+                if (targetImg) {
+                    const originalSrc = targetImg.getAttribute("data-original-src");
+                    const originalStyle = targetImg.getAttribute("data-original-style");
+                    if (originalSrc) {
+                        saveVersion(doc.documentElement.outerHTML);
+                        targetImg.src = originalSrc;
+                        targetImg.setAttribute("src", originalSrc);
+                        if (originalStyle) {
+                            targetImg.setAttribute("style", originalStyle);
+                        } else {
+                            targetImg.removeAttribute("style");
+                        }
+                        propagateChanges();
+                        
+                        // Select the element to update panel states
+                        targetImg.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
+                    }
+                }
+                return;
+            }
+
+            if ((target === deleteHandle || deleteHandle?.contains(target)) && selectedElementRef.current) {
                 e.preventDefault();
                 e.stopPropagation();
                 saveVersion(doc.documentElement.outerHTML);
@@ -933,6 +1195,14 @@ export function LivePreview({
             }
 
             const dragHandle = doc.getElementById("ag-drag-handle");
+            const editHandle = doc.getElementById("ag-edit-handle");
+
+            if ((target === editHandle || editHandle?.contains(target)) && selectedElementRef.current) {
+                e.preventDefault();
+                e.stopPropagation();
+                enableTextEdit();
+                return;
+            }
 
             if (target === resizeHandle && selectedElementRef.current?.tagName === "IMG") {
                 e.preventDefault();
@@ -943,28 +1213,38 @@ export function LivePreview({
                 return;
             }
 
-            if (target === dragHandle && selectedElementRef.current) {
+            if ((target === dragHandle || dragHandle?.contains(target)) && selectedElementRef.current) {
                 e.preventDefault();
                 e.stopPropagation();
 
                 isBlockDraggingRef.current = true;
                 dragTargetRef.current = selectedElementRef.current;
 
+                const deleteHandle2 = doc.getElementById("ag-delete-handle");
+                const editHandle2 = doc.getElementById("ag-edit-handle");
                 if (dragHandle) dragHandle.style.display = "none";
                 if (resizeHandle) resizeHandle.style.display = "none";
+                if (deleteHandle2) deleteHandle2.style.display = "none";
+                if (editHandle2) editHandle2.style.display = "none";
 
                 const rect = selectedElementRef.current.getBoundingClientRect();
                 const ghost = selectedElementRef.current.cloneNode(true) as HTMLElement;
                 ghost.removeAttribute("contenteditable");
                 ghost.classList.add("ag-ghost");
                 ghost.style.width = `${rect.width}px`;
-                ghost.style.height = `${rect.height}px`;
+                ghost.style.height = `${Math.min(rect.height, 120)}px`;
+                ghost.style.overflow = 'hidden';
                 ghost.style.left = `${rect.left}px`;
                 ghost.style.top = `${rect.top}px`;
 
                 const offsetX = e.clientX - rect.left;
                 const offsetY = e.clientY - rect.top;
-                selectedElementRef.current.style.opacity = "0.3";
+                // Dim the original element
+                selectedElementRef.current.style.opacity = "0.25";
+                selectedElementRef.current.style.outline = "2px dashed #7c3aed";
+                selectedElementRef.current.style.outlineOffset = "2px";
+                // Append ghost to DOM so it is visible
+                doc.body.appendChild(ghost);
                 ghostElementRef.current = ghost;
                 (ghost as unknown as { _offsetX: number })._offsetX = offsetX;
                 (ghost as unknown as { _offsetY: number })._offsetY = offsetY;
@@ -1068,52 +1348,8 @@ export function LivePreview({
             }
         });
 
-        doc.addEventListener("mouseup", () => {
-            if (isResizingRef.current) {
-                isResizingRef.current = false;
-                resizeTargetRef.current = null;
-                propagateChanges();
-            }
-
-            if (isBlockDraggingRef.current) {
-                isBlockDraggingRef.current = false;
-
-                const dragTarget = dragTargetRef.current;
-                const dropTarget = dropTargetRef.current;
-                const position = dropPositionRef.current;
-                const ghost = ghostElementRef.current;
-                const dropIndicator = doc.getElementById("ag-drop-indicator");
-
-                if (ghost) ghost.remove();
-                if (dropIndicator) dropIndicator.style.display = "none";
-
-                if (dragTarget) {
-                    dragTarget.style.opacity = "";
-
-                    if (dropTarget && dropTarget.parentNode) {
-                        try {
-                            if (position === "before") {
-                                dropTarget.parentNode.insertBefore(dragTarget, dropTarget);
-                            } else {
-                                if (dropTarget.nextSibling) {
-                                    dropTarget.parentNode.insertBefore(dragTarget, dropTarget.nextSibling);
-                                } else {
-                                    dropTarget.parentNode.appendChild(dragTarget);
-                                }
-                            }
-                            propagateChanges();
-                        } catch (err) {
-                            console.error("Failed to reorder element:", err);
-                        }
-                    }
-                }
-
-                dragTargetRef.current = null;
-                dropTargetRef.current = null;
-                ghostElementRef.current = null;
-                setTimeout(updateResizeHandlePosition, 10);
-            }
-        });
+        doc.addEventListener("mouseup", handleGlobalMouseUp);
+        win.addEventListener("mouseup", handleGlobalMouseUp);
 
         doc.addEventListener("input", (e) => {
             const target = e.target as HTMLElement;
@@ -1124,6 +1360,15 @@ export function LivePreview({
             }
         });
 
+        doc.addEventListener("focusout", (e) => {
+            const target = e.target as HTMLElement;
+            if (target && target.getAttribute("contenteditable") === "true") {
+                target.removeAttribute("contenteditable");
+                onMjmlChangeRef.current?.(mjmlRef.current, doc.documentElement.outerHTML);
+                updateResizeHandlePosition();
+            }
+        });
+
         doc.addEventListener("keydown", (e) => {
             if (e.key === "Escape") clearSelection();
         });
@@ -1131,7 +1376,7 @@ export function LivePreview({
         // Polling update for layout shifts
         const interval = setInterval(updateResizeHandlePosition, 500);
         return () => clearInterval(interval);
-    }, [injectIframeStyles, updateResizeHandlePosition, propagateChanges, undo, redo, saveVersion, findSectionFromElement]);
+    }, [injectIframeStyles, updateResizeHandlePosition, propagateChanges, undo, redo, saveVersion, findSectionFromElement, handleGlobalMouseUp]);
 
     // Re-inject styles and reposition handle when html changes
     useEffect(() => {
@@ -1141,6 +1386,13 @@ export function LivePreview({
             updateResizeHandlePosition();
         }
     }, [html, injectIframeStyles, updateResizeHandlePosition]);
+
+    useEffect(() => {
+        window.addEventListener("mouseup", handleGlobalMouseUp);
+        return () => {
+            window.removeEventListener("mouseup", handleGlobalMouseUp);
+        };
+    }, [handleGlobalMouseUp]);
 
     // Apply style changes to the selected iframe element
     const applyStyle = useCallback((prop: Partial<ElementProperties>) => {
@@ -1235,9 +1487,19 @@ export function LivePreview({
             const el = selectedElementRef.current;
             if (el && !next.isImage) {
                 const isStructural = ["TR", "TD", "TABLE", "DIV", "TBODY", "THEAD", "TFOOT"].includes(el.tagName.toUpperCase());
-                
-                if (!isStructural && el.children.length === 0) {
-                    el.innerHTML = contentStr;
+                const hasHtmlTags = /<[a-z][\s\S]*>/i.test(contentStr);
+
+                let cleanContent = contentStr;
+                if (["P", "SPAN", "A", "H1", "H2", "H3", "H4", "H5", "H6"].includes(el.tagName.toUpperCase())) {
+                    // If it's wrapped in a single <p>...</p>, strip it to avoid nested paragraphs
+                    const pMatch = contentStr.match(/^<p>([\s\S]*)<\/p>$/i);
+                    if (pMatch) {
+                        cleanContent = pMatch[1];
+                    }
+                }
+
+                if (!isStructural && (el.children.length === 0 || hasHtmlTags)) {
+                    el.innerHTML = cleanContent;
                 } else {
                     // Update text nodes recursively to preserve HTML elements/layout
                     const textNodes: Text[] = [];
@@ -1253,14 +1515,25 @@ export function LivePreview({
                     walk(el);
 
                     if (textNodes.length > 0) {
-                        // Set the new text to the first text node, and clear the rest
-                        textNodes[0].nodeValue = contentStr;
-                        for (let i = 1; i < textNodes.length; i++) {
-                            textNodes[i].nodeValue = "";
+                        if (hasHtmlTags) {
+                            const parent = textNodes[0].parentNode as HTMLElement;
+                            if (parent && parent !== el) {
+                                parent.innerHTML = cleanContent;
+                            } else {
+                                el.innerHTML = cleanContent;
+                            }
+                        } else {
+                            textNodes[0].nodeValue = cleanContent;
+                            for (let i = 1; i < textNodes.length; i++) {
+                                textNodes[i].nodeValue = "";
+                            }
                         }
                     } else {
-                        // If no text nodes exist, append a new text node
-                        el.appendChild(el.ownerDocument.createTextNode(contentStr));
+                        if (hasHtmlTags) {
+                            el.innerHTML = cleanContent;
+                        } else {
+                            el.appendChild(el.ownerDocument.createTextNode(cleanContent));
+                        }
                     }
                 }
                 reapplyStyles(el, next);
@@ -1414,7 +1687,7 @@ export function LivePreview({
     }, [panelWidth]);
 
     return (
-        <div className="flex flex-col h-full w-full bg-[#f5f7fa]">
+        <div className="flex flex-col h-full w-full bg-slate-100">
             <input ref={imageInputRef} type="file" accept="image/*" className="hidden" onChange={handleImageFileChange} />
 
             {/* ── Toolbar ── */}
@@ -1438,6 +1711,7 @@ export function LivePreview({
                 onExportHtml={onExportHtml}
                 onAddText={handleAddText}
                 isSharing={isSharing}
+                onSimulateLoading={() => setSimulateLoading(true)}
             />
 
             {/* ── Section Controls Overlay ── */}
@@ -1473,48 +1747,58 @@ export function LivePreview({
             {/* ── Content row ── */}
             <div className="flex flex-1 min-h-0">
                 <div className="flex-1 overflow-auto p-6 flex items-start justify-center relative scrollbar-hide">
-                    {isLoading && (
-                        <div className="absolute inset-x-6 top-6 bottom-6 z-10 flex flex-col items-center justify-center bg-white/80 backdrop-blur-[2px] animate-fade-in rounded-xl overflow-hidden border border-slate-200/50">
-                            <div className="w-full max-w-md bg-white p-8 flex flex-col gap-6 scale-95 opacity-80 pointer-events-none">
-                                <div className="flex items-center justify-between">
-                                    <Skeleton width="5rem" height="1.5rem" />
-                                    <div className="flex gap-2">
-                                        <Skeleton width="2rem" height="0.5rem" />
-                                        <Skeleton width="2rem" height="0.5rem" />
-                                    </div>
-                                </div>
-                                <Skeleton width="100%" height="160px" borderRadius="12px" />
-                                <div className="space-y-3">
-                                    <Skeleton width="100%" height="0.8rem" />
-                                    <Skeleton width="90%" height="0.8rem" />
-                                </div>
-                                <div className="flex justify-center pt-2">
-                                    <Skeleton width="8rem" height="2.5rem" borderRadius="8px" />
-                                </div>
-                                <div className="flex flex-col items-center gap-1.5 pt-4">
-                                    <div className="flex items-center gap-1">
-                                        <div className={clsx("w-1.5 h-1.5 rounded-full animate-pulse", loadingType === "saving" ? "bg-emerald-500" : "bg-violet-600")} />
-                                        <p className="text-sm font-bold text-slate-800 tracking-tight">
-                                            {loadingType === "saving" ? "Saving to Supabase..." : "Gemini is crafting your email"}
-                                        </p>
-                                    </div>
-                                    {loadingType === "saving" && (
-                                        <p className="text-[10px] text-slate-400 font-medium uppercase tracking-wider">
-                                            No AI credits are used for saving
-                                        </p>
-                                    )}
-                                </div>
-                            </div>
-                        </div>
+                    {/* ── Re-open tab when panel is collapsed ── */}
+                    {!showEditPanel && html && (
+                        <button
+                            onClick={() => setShowEditPanel(true)}
+                            title="Open properties panel"
+                            className="absolute right-4 top-1/2 z-30 flex items-center justify-center w-8 h-8 rounded-full bg-white border border-slate-200 shadow-md text-slate-400 hover:text-slate-700 hover:border-slate-300 transition-all"
+                            style={{ transform: "translateY(-50%)" }}
+                        >
+                            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
+                            </svg>
+                        </button>
                     )}
 
                     <div
                         className={clsx(
-                            "bg-white shadow-2xl rounded-xl overflow-hidden border border-slate-200 transition-all duration-500 ease-out scrollbar-hide",
+                            "bg-white shadow-2xl rounded-xl overflow-hidden border border-slate-200 transition-all duration-500 ease-out scrollbar-hide relative",
                             viewMode === "desktop" ? "w-full max-w-3xl min-h-[600px]" : "w-[390px] min-h-[700px]"
                         )}
                         style={{ height: "calc(100vh - 100px)", maxHeight: 800 }}
                     >
+                        {(isLoading || simulateLoading) && (
+                            <div className="absolute inset-0 z-40 flex flex-col items-center justify-center bg-white/95 backdrop-blur-[2px] animate-fade-in p-8 text-center gap-6 select-none">
+                                <div className="absolute -inset-10 bg-gradient-to-tr from-violet-500/5 via-fuchsia-500/5 to-cyan-500/5 blur-3xl opacity-70 pointer-events-none" />
+                                
+                                <div className="relative w-96 h-96 flex items-center justify-center">
+                                    <img
+                                        src={HandLoading.src}
+                                        alt="Crafting Email"
+                                        className="w-full h-full object-contain"
+                                    />
+                                </div>
+
+                                <div className="space-y-2.5 max-w-md" style={{position: "absolute",top:"400px",left:"50%",transform: "translateX(-50%)"}}>
+                                    <p className="text-sm text-slate-500 leading-relaxed font-medium transition-all duration-300">
+                                        {loadingType === "saving" 
+                                            ? SAVING_MESSAGES[creativeMessageIndex] 
+                                            : GENERATING_MESSAGES[creativeMessageIndex]}
+                                    </p>
+                                </div>
+
+                                {simulateLoading && (
+                                    <button
+                                        type="button"
+                                        onClick={() => setSimulateLoading(false)}
+                                        className="mt-4 px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-lg transition-colors border border-slate-200/50 relative z-50"
+                                    >
+                                        Stop Simulation
+                                    </button>
+                                )}
+                            </div>
+                        )}
                         {html ? (
                             <iframe
                                 ref={iframeRef}
@@ -1529,8 +1813,18 @@ export function LivePreview({
                                 <div className="w-16 h-16 rounded-2xl bg-slate-100 flex items-center justify-center">
                                     <MailOpen className="w-7 h-7 text-slate-300" />
                                 </div>
-                                <div className="text-center">
+                                <div className="text-center flex flex-col items-center gap-1.5">
                                     <p className="text-sm font-semibold text-slate-500">Your email preview will appear here</p>
+                                    {onLoadSample && (
+                                        <button
+                                            type="button"
+                                            onClick={onLoadSample}
+                                            className="text-xs text-violet-600 hover:text-violet-700 font-medium underline underline-offset-4 decoration-violet-300 hover:decoration-violet-500 transition-all flex items-center gap-1.5 mt-1"
+                                        >
+                                            <FileCode className="w-3.5 h-3.5" />
+                                            Load a sample template to start editing
+                                        </button>
+                                    )}
                                 </div>
                             </div>
                         )}
@@ -1544,7 +1838,7 @@ export function LivePreview({
                             animate={{ width: panelWidth, opacity: 1 }}
                             exit={{ width: 0, opacity: 0 }}
                             transition={{ duration: 0.22, ease: "easeOut" }}
-                            className="shrink-0 relative border-l border-slate-200 bg-white h-full overflow-hidden"
+                            className="shrink-0 relative border-l border-slate-200 bg-white h-full"
                             style={{ width: panelWidth }}
                         >
                             {/* Drag resize handle */}
@@ -1556,13 +1850,14 @@ export function LivePreview({
                                 <div className="w-0.5 h-8 bg-slate-300 group-hover:bg-violet-400 rounded-full transition-colors" />
                             </div>
 
-                            {/* ── Collapse arrow tab ── */}
+                            {/* ── Collapse Toggle Button ── */}
                             <button
                                 onClick={() => setShowEditPanel(false)}
+                                className="absolute -left-4 top-1/2 z-[999] flex items-center justify-center w-8 h-8 rounded-full bg-white border border-slate-200 shadow-md text-slate-400 hover:text-slate-700 hover:border-slate-300 transition-all"
+                                style={{ transform: "translateY(-50%)" }}
                                 title="Collapse panel"
-                                className="absolute left-0 top-1/2 -translate-y-1/2 -translate-x-full z-30 flex items-center justify-center w-5 h-10 bg-white border border-r-0 border-slate-200 rounded-l-lg shadow-sm hover:bg-violet-50 hover:border-violet-200 transition-all group"
                             >
-                                <svg className="w-3 h-3 text-slate-400 group-hover:text-violet-500 transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
                                     <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
                                 </svg>
                             </button>
@@ -1593,25 +1888,6 @@ export function LivePreview({
                         </motion.div>
                     )}
                 </AnimatePresence>
-
-                {/* ── Re-open tab when panel is collapsed ── */}
-                {!showEditPanel && html && (
-                    <motion.button
-                        initial={{ opacity: 0, x: 8 }}
-                        animate={{ opacity: 1, x: 0 }}
-                        exit={{ opacity: 0, x: 8 }}
-                        transition={{ duration: 0.18 }}
-                        onClick={() => setShowEditPanel(true)}
-                        title="Open properties panel"
-                        className="shrink-0 flex flex-col items-center justify-center w-5 h-full border-l border-slate-200 bg-white hover:bg-violet-50 hover:border-violet-200 transition-all group cursor-pointer"
-                    >
-                        <div className="flex flex-col items-center gap-1.5">
-                            <svg className="w-3 h-3 text-slate-400 group-hover:text-violet-500 transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                                <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
-                            </svg>
-                        </div>
-                    </motion.button>
-                )}
             </div>
         </div>
     );

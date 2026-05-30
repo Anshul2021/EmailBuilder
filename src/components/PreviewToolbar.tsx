@@ -26,6 +26,7 @@ interface PreviewToolbarProps {
     onExportHtml: () => void;
     onAddText: () => void;
     isSharing?: boolean;
+    onSimulateLoading?: () => void;
 }
 
 export function PreviewToolbar({
@@ -47,7 +48,8 @@ export function PreviewToolbar({
     onDownloadEml,
     onExportHtml,
     onAddText,
-    isSharing = false
+    isSharing = false,
+    onSimulateLoading
 }: PreviewToolbarProps) {
     const [showExportDropdown, setShowExportDropdown] = useState(false);
     const dropdownRef = useRef<HTMLDivElement>(null);
@@ -105,6 +107,19 @@ export function PreviewToolbar({
                     </button>
                 </Tooltip>
 
+                <Tooltip content="Simulate Loading Screen" position="bottom">
+                    <button
+                        onClick={onSimulateLoading}
+                        className="flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg text-slate-500 hover:bg-slate-100 border border-transparent transition-all"
+                    >
+                        <span className="relative flex h-2 w-2">
+                            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-violet-400 opacity-75"></span>
+                            <span className="relative inline-flex rounded-full h-2 w-2 bg-violet-500"></span>
+                        </span>
+                        Test Load
+                    </button>
+                </Tooltip>
+
                 <div className="w-px h-5 bg-slate-200" />
 
                 <div className="flex items-center gap-1">
@@ -136,19 +151,6 @@ export function PreviewToolbar({
                         </button>
                     </Tooltip>
                 </div>
-
-                <div className="w-px h-5 bg-slate-200" />
-
-                <Tooltip content="Copy MJML" position="bottom">
-                    <button 
-                        onClick={onCopyMjml} 
-                        disabled={!html} 
-                        className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors disabled:opacity-40"
-                    >
-                        {copied ? <Check className="w-4 h-4 text-emerald-500" /> : <Copy className="w-4 h-4" />}
-                    </button>
-                </Tooltip>
-                
                 <div className="w-px h-5 bg-slate-200" />
                 
                 <Tooltip content="View History" position="bottom">
@@ -204,7 +206,7 @@ export function PreviewToolbar({
                                 animate={{ opacity: 1, y: 0, scale: 1 }}
                                 exit={{ opacity: 0, y: -4, scale: 0.98 }}
                                 transition={{ duration: 0.15 }}
-                                className="absolute right-0 top-full mt-2.5 z-50 bg-white border border-slate-200 rounded-xl shadow-xl p-1.5 min-w-[240px] overflow-hidden"
+                                className="absolute right-0 top-full mt-2.5 z-50 bg-white border border-slate-200 rounded-lg shadow-xl p-1.5 min-w-[240px] overflow-hidden"
                                 style={{ boxShadow: "0 10px 25px -5px rgba(15,23,42,0.12), 0 8px 16px -6px rgba(15,23,42,0.08)" }}
                             >
                                 <button

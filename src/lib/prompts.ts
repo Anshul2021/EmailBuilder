@@ -170,33 +170,36 @@ export interface GeminiModel {
   label: string;
   value: string;
   description: string;
+  badge?: string;
 }
 
 export const GEMINI_MODELS: GeminiModel[] = [
   {
     label: "Gemini 3.5 Flash",
     value: "gemini-3.5-flash",
-    description: "Newest model for advanced reasoning (falls back if unavailable)"
+    description: "Newest model for advanced reasoning and layout reference parsing"
+  },
+  {
+    label: "Gemini 3 Flash",
+    value: "gemini-3-flash",
+    description: "Stable next-generation performance model"
+  },
+  {
+    label: "Gemini 3.1 Flash Lite",
+    value: "gemini-3.1-flash-lite",
+    description: "Efficient next-generation lightweight model",
+    badge: "Faster generation"
   },
   {
     label: "Gemini 2.5 Flash",
     value: "gemini-2.5-flash",
-    description: "Fast and reliable model (falls back if unavailable)"
+    description: "Default standard fast and reliable model",
+    badge: "Best output"
   },
   {
-    label: "Gemini 2.0 Flash",
-    value: "gemini-2.0-flash",
-    description: "Highly stable and fast standard model"
-  },
-  {
-    label: "Gemini 1.5 Pro",
-    value: "gemini-1.5-pro",
-    description: "Complex reasoning and larger context"
-  },
-  {
-    label: "Gemini 1.5 Flash",
-    value: "gemini-1.5-flash",
-    description: "Lightweight and efficient model"
+    label: "Gemini 2.5 Flash Lite",
+    value: "gemini-2.5-flash-lite",
+    description: "Highly efficient standard lightweight model"
   }
 ];
 

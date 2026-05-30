@@ -41,7 +41,7 @@ export async function POST(req: NextRequest) {
         // Build the try queue: primary model first, followed by others in fallback list
         const modelQueue = [
             primaryModel,
-            ...["gemini-3.5-flash", "gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-pro", "gemini-1.5-flash"].filter(m => m !== primaryModel)
+            ...["gemini-3.5-flash", "gemini-3-flash", "gemini-3.1-flash-lite", "gemini-2.5-flash", "gemini-2.5-flash-lite"].filter(m => m !== primaryModel)
         ];
 
         let sectionCode = "";
@@ -76,6 +76,9 @@ export async function POST(req: NextRequest) {
 
                 // Clean any markdown fences
                 sectionCode = sectionCode.replace(/```(mjml|html|xml)?\n?/g, "").replace(/```$/m, "").trim();
+
+                // Replace broken imgur URLs with placehold.co placeholders
+                sectionCode = sectionCode.replace(/src="https?:\/\/(?:i\.)?imgur\.com\/[^"]+"/gi, 'src="https://placehold.co/600x400?text=Image+Placeholder"');
 
                 // Validate it starts with <mj-section
                 if (!sectionCode.toLowerCase().includes("<mj-section")) {

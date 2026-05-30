@@ -62,12 +62,6 @@ export async function POST(req: NextRequest) {
         // Apply rate limit for actual AI generation
         const ip = getClientIp(req);
         const usage = getUsage(ip);
-        if (usage.remaining <= 0) {
-            return NextResponse.json({
-                error: "Daily generation limit reached. Please try again tomorrow.",
-                code: "LIMIT_EXCEEDED"
-            }, { status: 429 });
-        }
 
         // Validate the model against the allowed GEMINI_MODELS list
         let primaryModel = requestedModel;
@@ -75,6 +69,15 @@ export async function POST(req: NextRequest) {
             primaryModel = "gemini-2.5-flash";
         } else if (!GEMINI_MODELS.some(m => m.value === primaryModel)) {
             return NextResponse.json({ error: "Invalid model selected." }, { status: 400 });
+        }
+
+        // Check if selected model's limit has been reached
+        const selectedModelUsage = usage.modelCounts?.[primaryModel];
+        if (selectedModelUsage && selectedModelUsage.remaining <= 0) {
+            return NextResponse.json({
+                error: `Daily generation limit reached for "${primaryModel}". Please switch to another model in the dropdown.`,
+                code: "LIMIT_EXCEEDED"
+            }, { status: 429 });
         }
 
         if (!prompt && !imageBase64) {
@@ -85,11 +88,21 @@ export async function POST(req: NextRequest) {
             return NextResponse.json({ error: "GEMINI_API_KEY is not configured on the server." }, { status: 500 });
         }
 
-        // Build the try queue: primary model first, followed by others in fallback list
+        // Build the try queue: primary model first, followed by others in fallback list that have remaining quota
         const modelQueue = [
             primaryModel,
-            ...["gemini-3.5-flash", "gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-pro", "gemini-1.5-flash"].filter(m => m !== primaryModel)
-        ];
+            ...["gemini-3.5-flash", "gemini-3-flash", "gemini-3.1-flash-lite", "gemini-2.5-flash", "gemini-2.5-flash-lite"].filter(m => m !== primaryModel)
+        ].filter(modelName => {
+            const mUsage = usage.modelCounts?.[modelName];
+            return !mUsage || mUsage.remaining > 0;
+        });
+
+        if (modelQueue.length === 0) {
+            return NextResponse.json({
+                error: "All models have reached their generation limits. Please try again tomorrow.",
+                code: "LIMIT_EXCEEDED"
+            }, { status: 429 });
+        }
 
         let mjmlCode = "";
         let resolvedModel = primaryModel;
@@ -209,6 +222,9 @@ Return the complete updated MJML. Modify only what was requested, preserve every
         // Clean MJML of any markdown fences
         mjmlCode = mjmlCode.replace(/```(mjml|html|xml)?\n?/g, "").replace(/```$/m, "").trim();
 
+        // Replace broken imgur URLs with placehold.co placeholders
+        mjmlCode = mjmlCode.replace(/src="https?:\/\/(?:i\.)?imgur\.com\/[^"]+"/gi, 'src="https://placehold.co/600x400?text=Image+Placeholder"');
+
         // Compile MJML → HTML
         try {
             // Inject section markers before compiling
@@ -226,7 +242,7 @@ Return the complete updated MJML. Modify only what was requested, preserve every
             if (errors?.length > 0) console.warn("[API] MJML warnings:", errors.length);
             
             // Increment usage limit only on successful generation
-            const updatedUsage = incrementUsage(ip);
+            const updatedUsage = incrementUsage(ip, resolvedModel);
 
             // Return the ORIGINAL mjml (clean) but HTML with markers for section detection and the model that succeeded
             return NextResponse.json({ 

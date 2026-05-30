@@ -116,9 +116,9 @@ export function PropertiesPanel({
     const [isPexelsLoading, setIsPexelsLoading] = useState(false);
 
     useEffect(() => {
-        if (hasSelection && selectedProps.isImage) {
+        if (hasSelection) {
             setMode("properties");
-            if (pexelsPhotos.length === 0) {
+            if (selectedProps.isImage && pexelsPhotos.length === 0) {
                 const q = "workspace";
                 setPexelsQuery(q);
                 fetchPexels(q);
@@ -203,13 +203,6 @@ export function PropertiesPanel({
                             );
                         })}
                     </div>
-                    <button
-                        onClick={onClose}
-                        className="p-1.5 rounded-lg hover:bg-slate-100 transition-colors text-slate-400 hover:text-slate-600 active:scale-95"
-                        title="Close panel"
-                    >
-                        <X className="w-3.5 h-3.5" />
-                    </button>
                 </div>
             </div>
 
@@ -425,7 +418,7 @@ export function PropertiesPanel({
                                             /* ── Image element sections ── */
                                             <>
                                                 {/* Dimensions */}
-                                                <Accordion title="Dimensions" defaultExpanded={true}>
+                                                <Accordion title="Dimensions" defaultExpanded={false}>
                                                     <div className="grid grid-cols-2 gap-x-3 gap-y-4 pt-1">
                                                         <div className="flex flex-col col-span-2">
                                                             <label className={lc}>Width</label>
@@ -449,7 +442,7 @@ export function PropertiesPanel({
                                                 </Accordion>
 
                                                 {/* Image fit */}
-                                                <Accordion title="Image fit" defaultExpanded={true}>
+                                                <Accordion title="Image fit" defaultExpanded={false}>
                                                     <div className="pt-1">
                                                         <label className={lc}>Fit style</label>
                                                         <DesignSelect
@@ -478,7 +471,7 @@ export function PropertiesPanel({
                                                                     value={pexelsQuery}
                                                                     onChange={(e) => setPexelsQuery(e.target.value)}
                                                                     placeholder="Search e.g. office, tech…"
-                                                                    className="w-full text-xs pl-8 pr-7 py-1.5 border border-slate-200 hover:border-slate-300 focus:border-violet-400 focus:ring-0 rounded-lg outline-none transition-all bg-slate-50 focus:bg-white"
+                                                                    className="w-full text-xs pl-8 pr-7 h-9 border border-slate-200 hover:border-slate-300 focus:border-violet-400 focus:ring-0 rounded-lg outline-none transition-all bg-slate-50 focus:bg-white"
                                                                     onKeyDown={(e) => e.key === "Enter" && fetchPexels(pexelsQuery)}
                                                                 />
                                                                 {pexelsQuery && (
@@ -494,20 +487,20 @@ export function PropertiesPanel({
                                                             <button
                                                                 type="button"
                                                                 onClick={() => fetchPexels(pexelsQuery)}
-                                                                className="px-3 py-1.5 bg-violet-600 hover:bg-violet-700 text-white text-xs font-semibold rounded-lg transition-all shrink-0"
+                                                                className="px-4 h-9 bg-violet-600 hover:bg-violet-700 text-white text-xs font-semibold rounded-lg transition-all shrink-0 flex items-center justify-center"
                                                             >
                                                                 Search
                                                             </button>
                                                         </div>
 
                                                         {/* Quick chips */}
-                                                        <div className="flex flex-wrap gap-1.5">
+                                                        <div className="flex gap-1.5 overflow-x-auto scrollbar-hide whitespace-nowrap py-0.5">
                                                             {["Office", "Tech", "Nature", "Fashion", "Minimal", "Coffee"].map((chip) => (
                                                                 <button
                                                                     type="button"
                                                                     key={chip}
                                                                     onClick={() => { setPexelsQuery(chip.toLowerCase()); fetchPexels(chip); }}
-                                                                    className={`text-xs font-semibold px-2.5 py-0.5 rounded-full border transition-all ${
+                                                                    className={`text-xs font-semibold px-2.5 py-1.5 rounded-full border transition-all inline-block ${
                                                                         pexelsQuery.toLowerCase() === chip.toLowerCase()
                                                                             ? "bg-violet-50 text-violet-600 border-violet-200"
                                                                             : "bg-white text-slate-500 border-slate-200 hover:border-violet-300 hover:text-violet-600"
@@ -533,7 +526,7 @@ export function PropertiesPanel({
                                                                     hidden: { opacity: 0 },
                                                                     show: { opacity: 1, transition: { staggerChildren: 0.04 } },
                                                                 }}
-                                                                className="grid grid-cols-3 gap-2 max-h-[220px] overflow-y-auto pr-0.5 custom-scrollbar"
+                                                                className="grid grid-cols-3 gap-2 max-h-full overflow-y-auto pr-0.5 custom-scrollbar"
                                                             >
                                                                 {pexelsPhotos.map((photo) => {
                                                                     const isSelected = selectedProps.src === photo.src.large;
@@ -578,26 +571,6 @@ export function PropertiesPanel({
                                                                 <p className="text-[11px] text-slate-300 mt-0.5">Search above to find stock photos</p>
                                                             </div>
                                                         )}
-                                                    </div>
-                                                </Accordion>
-
-                                                {/* Actions */}
-                                                <Accordion title="Actions" defaultExpanded={true}>
-                                                    <div className="flex flex-col gap-2 pt-1">
-                                                        <button
-                                                            onClick={onReplaceImage}
-                                                            className="flex items-center justify-center gap-1.5 w-full py-2 bg-violet-600 hover:bg-violet-700 text-white rounded-lg text-xs font-semibold transition-all"
-                                                        >
-                                                            <Upload className="w-3.5 h-3.5" />
-                                                            Replace image
-                                                        </button>
-                                                        <button
-                                                            onClick={() => onApplyStyle({ width: 100, borderRadius: 0 })}
-                                                            className="flex items-center justify-center gap-1.5 w-full py-2 bg-white hover:bg-slate-50 text-slate-600 border border-slate-200 hover:border-slate-300 rounded-lg text-xs font-semibold transition-all"
-                                                        >
-                                                            <Trash2 className="w-3.5 h-3.5" />
-                                                            Reset styles
-                                                        </button>
                                                     </div>
                                                 </Accordion>
                                             </>

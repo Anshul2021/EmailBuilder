@@ -605,7 +605,6 @@ export default function Home() {
           isLoading={loading}
           hasTemplate={!!mjml}
           messages={messages}
-          onLoadSample={handleLoadSample}
           isCollapsed={isPromptCollapsed}
           onToggleCollapse={() => setIsPromptCollapsed(v => !v)}
           selectedModel={selectedModel}
@@ -619,7 +618,7 @@ export default function Home() {
       <div className="flex-1 h-full min-w-0 relative">
         {/* Error Banner */}
         {errorMsg && (
-          <div className="absolute top-3 left-1/2 -translate-x-1/2 z-50 flex items-start gap-3 bg-red-50 border border-red-200 text-red-700 text-xs font-medium px-4 py-3 rounded-xl shadow-lg max-w-[540px] animate-slide-up">
+          <div className="absolute bottom-6 right-6 z-50 flex items-start gap-3 bg-red-50 border border-red-200 text-red-700 text-xs font-medium px-4 py-3 rounded-xl shadow-lg max-w-[540px] animate-slide-up">
             <AlertCircle className="w-4 h-4 mt-0.5 shrink-0 text-red-500" />
             <span className="flex-1 leading-relaxed">{errorMsg}</span>
             <button onClick={() => setErrorMsg(null)} className="shrink-0 -mt-0.5 p-0.5 rounded hover:bg-red-100 transition-colors">
@@ -629,7 +628,7 @@ export default function Home() {
         )}
         {/* Info/Fallback Banner */}
         {infoMsg && (
-          <div className="absolute top-3 left-1/2 -translate-x-1/2 z-50 flex items-start gap-3 bg-amber-50 border border-amber-200 text-amber-800 text-xs font-medium px-4 py-3 rounded-xl shadow-lg max-w-[540px] animate-slide-up">
+          <div className="absolute bottom-6 right-6 z-50 flex items-start gap-3 bg-amber-50 border border-amber-200 text-amber-800 text-xs font-medium px-4 py-3 rounded-xl shadow-lg max-w-[540px] animate-slide-up">
             <Sparkles className="w-4 h-4 mt-0.5 shrink-0 text-amber-500" />
             <span className="flex-1 leading-relaxed">{infoMsg}</span>
             <button onClick={() => setInfoMsg(null)} className="shrink-0 -mt-0.5 p-0.5 rounded hover:bg-amber-100 transition-colors">
@@ -639,7 +638,7 @@ export default function Home() {
         )}
         {/* Success Banner */}
         {successMsg && (
-          <div className="absolute top-3 left-1/2 -translate-x-1/2 z-50 flex items-start gap-3 bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-medium px-4 py-3 rounded-xl shadow-lg max-w-[540px] animate-slide-up">
+          <div className="absolute bottom-6 right-6 z-50 flex items-start gap-3 bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-medium px-4 py-3 rounded-xl shadow-lg max-w-[540px] animate-slide-up">
             <Check className="w-4 h-4 mt-0.5 shrink-0 text-emerald-500" />
             <span className="flex-1 leading-relaxed">{successMsg}</span>
             <button onClick={() => setSuccessMsg(null)} className="shrink-0 -mt-0.5 p-0.5 rounded hover:bg-emerald-100 transition-colors">
@@ -660,6 +659,7 @@ export default function Home() {
           onSharePreview={handleSharePreview}
           onDownloadHtml={handleExportHtml}
           onDownloadEml={handleDownloadEml}
+          onLoadSample={handleLoadSample}
           onOpenHistory={() => setShowHistory(true)}
           onSectionEdit={handleSectionEdit}
           onSectionDuplicate={handleSectionDuplicate}

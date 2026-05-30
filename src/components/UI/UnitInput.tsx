@@ -28,7 +28,7 @@ export function UnitInput({ value, unit = "px", onChangeValue, onChangeUnit, uni
     };
 
     return (
-        <div className={cn("flex items-center bg-slate-50 border border-slate-200 rounded-lg overflow-hidden h-7", className)}>
+        <div className={cn("flex items-center bg-slate-50 border border-slate-200 rounded-lg overflow-hidden h-9", className)}>
             <input
                 type="text"
                 value={value !== undefined ? value : ""}

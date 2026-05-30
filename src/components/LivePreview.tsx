@@ -1780,7 +1780,7 @@ export function LivePreview({
                                     />
                                 </div>
 
-                                <div className="space-y-2.5 max-w-md" style={{position: "absolute",top:"400px",left:"50%",transform: "translateX(-50%)"}}>
+                                <div className="space-y-2.5 max-w-md" style={{position: "absolute",top:"440px",left:"50%",transform: "translateX(-50%)"}}>
                                     <p className="text-sm text-slate-500 leading-relaxed font-medium transition-all duration-300">
                                         {loadingType === "saving" 
                                             ? SAVING_MESSAGES[creativeMessageIndex] 

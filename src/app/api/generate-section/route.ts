@@ -8,6 +8,46 @@ export const maxDuration = 30;
 
 const ai = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "");
 
+/**
+ * Safely rewrites any external image URL (e.g. imgbb.com, imgur.com, etc.)
+ * that is not placehold.co into a standard placehold.co placeholder image.
+ */
+function sanitizeImageSources(mjmlCode: string): string {
+    // Regex matches src="URL" or src='URL' where URL starts with http/https but NOT placehold.co
+    // Capture the quote character in group 1, and the URL in group 2
+    return mjmlCode.replace(/src=(["'])(https?:\/\/(?!placehold\.co)[^"'\s>]+)\1/gi, (match, quote, url) => {
+        let width = "600";
+        let height = "400";
+        let text = "Image+Placeholder";
+
+        // If the URL has common size patterns like 300x250 or 600/400
+        const sizeMatch = url.match(/(\d+)x(\d+)/i) || url.match(/\/(\d+)\/(\d+)/);
+        if (sizeMatch) {
+            width = sizeMatch[1];
+            height = sizeMatch[2];
+        }
+
+        // Try to extract descriptive words from path/query as placeholder text
+        try {
+            const urlObj = new URL(url);
+            const textParam = urlObj.searchParams.get("text") || urlObj.searchParams.get("q");
+            if (textParam) {
+                text = encodeURIComponent(textParam);
+            } else {
+                const pathParts = urlObj.pathname.split("/").filter(Boolean);
+                const lastPart = pathParts[pathParts.length - 1];
+                if (lastPart && !lastPart.includes(".") && lastPart.length > 2) {
+                    text = encodeURIComponent(lastPart);
+                }
+            }
+        } catch (e) {
+            // URL parse failure fallback
+        }
+
+        return `src="https://placehold.co/${width}x${height}?text=${text}"`;
+    });
+}
+
 export async function POST(req: NextRequest) {
     try {
         const body = await req.json();
@@ -77,8 +117,8 @@ export async function POST(req: NextRequest) {
                 // Clean any markdown fences
                 sectionCode = sectionCode.replace(/```(mjml|html|xml)?\n?/g, "").replace(/```$/m, "").trim();
 
-                // Replace broken imgur URLs with placehold.co placeholders
-                sectionCode = sectionCode.replace(/src="https?:\/\/(?:i\.)?imgur\.com\/[^"]+"/gi, 'src="https://placehold.co/600x400?text=Image+Placeholder"');
+                // Rewrite all external/unauthorized image URLs to placehold.co text placeholders
+                sectionCode = sanitizeImageSources(sectionCode);
 
                 // Validate it starts with <mj-section
                 if (!sectionCode.toLowerCase().includes("<mj-section")) {

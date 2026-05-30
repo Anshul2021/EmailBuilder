@@ -118,6 +118,12 @@ export async function POST(req: NextRequest) {
                 // Clean any markdown fences
                 sectionCode = sectionCode.replace(/```(mjml|html|xml)?\n?/g, "").replace(/```$/m, "").trim();
 
+                // Extract only the content between <mj-section> and </mj-section> tags to discard any surrounding conversational text
+                const sectionMatch = sectionCode.match(/<mj-section[\s\S]*?<\/mj-section>/i);
+                if (sectionMatch) {
+                    sectionCode = sectionMatch[0];
+                }
+
                 // Rewrite all external/unauthorized image URLs to placehold.co text placeholders
                 sectionCode = sanitizeImageSources(sectionCode);
 

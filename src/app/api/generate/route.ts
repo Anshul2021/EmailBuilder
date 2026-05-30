@@ -264,6 +264,12 @@ Return the complete updated MJML. Modify only what was requested, preserve every
         // Clean MJML of any markdown fences
         mjmlCode = mjmlCode.replace(/```(mjml|html|xml)?\n?/g, "").replace(/```$/m, "").trim();
 
+        // Extract only the content between <mjml> and </mjml> tags to discard any surrounding conversational text
+        const mjmlMatch = mjmlCode.match(/<mjml>[\s\S]*?<\/mjml>/i);
+        if (mjmlMatch) {
+            mjmlCode = mjmlMatch[0];
+        }
+
         // Rewrite all external/unauthorized image URLs to placehold.co text placeholders
         mjmlCode = sanitizeImageSources(mjmlCode);
 

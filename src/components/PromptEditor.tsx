@@ -146,19 +146,45 @@ const readFileAsText = (file: File): Promise<string> => {
     });
 };
 
-// Helper: read image as base64 data
+// Helper: read image as base64 data and compress it client-side to prevent payload size issues on Vercel
 const readImageAsBase64 = (file: File): Promise<{ base64: string; mimeType: string; dataUrl: string }> => {
     return new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = (e) => {
-            const dataUrl = (e.target?.result as string) || "";
-            const base64 = dataUrl.split(",")[1] || "";
-            resolve({ base64, mimeType: file.type, dataUrl });
+        const img = new Image();
+        img.src = URL.createObjectURL(file);
+        img.onload = () => {
+            URL.revokeObjectURL(img.src);
+            const canvas = document.createElement("canvas");
+            let width = img.width;
+            let height = img.height;
+
+            const MAX_DIM = 1200;
+            if (width > MAX_DIM || height > MAX_DIM) {
+                if (width > height) {
+                    height = Math.round((height * MAX_DIM) / width);
+                    width = MAX_DIM;
+                } else {
+                    width = Math.round((width * MAX_DIM) / height);
+                    height = MAX_DIM;
+                }
+            }
+
+            canvas.width = width;
+            canvas.height = height;
+            const ctx = canvas.getContext("2d");
+            if (ctx) {
+                ctx.drawImage(img, 0, 0, width, height);
+                // Compress as JPEG to keep the payload size extremely small (~100-150KB)
+                const dataUrl = canvas.toDataURL("image/jpeg", 0.85);
+                const base64 = dataUrl.split(",")[1] || "";
+                resolve({ base64, mimeType: "image/jpeg", dataUrl });
+            } else {
+                reject(new Error("Failed to create canvas context for compression"));
+            }
         };
-        reader.onerror = (e) => reject(e);
-        reader.readAsDataURL(file);
+        img.onerror = (e) => reject(e);
     });
 };
+
 
 // Helper: size formatter
 const formatFileSize = (bytes: number): string => {

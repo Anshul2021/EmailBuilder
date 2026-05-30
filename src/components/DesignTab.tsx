@@ -5,15 +5,40 @@ import { ColorInput } from "./UI/ColorInput";
 import { UnitInput } from "./UI/UnitInput";
 import { DesignSelect } from "./UI/DesignSelect";
 import { ElementProperties } from "./PropertiesPanel";
-import { AlignLeft, AlignCenter, AlignRight, AlignJustify, Underline, Strikethrough, Italic, Plus, X } from "lucide-react";
+import {
+    AlignLeft, AlignCenter, AlignRight, AlignJustify,
+    Underline, Strikethrough, Italic, Plus, X,
+    ImageIcon, Type, PencilLine, Search, Check
+} from "lucide-react";
+import { motion } from "framer-motion";
+import { Tooltip } from "./UI/Tooltip";
+import { RichTextEditor } from "./UI/RichTextEditor";
 
 interface DesignTabProps {
     hasSelection: boolean;
     selectedProps: ElementProperties;
     onApplyStyle: (prop: Partial<ElementProperties>) => void;
+    onContentChange: (content: string | null) => void;
+    onEnableTextEdit: () => void;
+    pexelsQuery: string;
+    setPexelsQuery: (query: string) => void;
+    pexelsPhotos: any[];
+    isPexelsLoading: boolean;
+    fetchPexels: (query: string) => Promise<void>;
 }
 
-export function DesignTab({ hasSelection, selectedProps, onApplyStyle }: DesignTabProps) {
+export function DesignTab({
+    hasSelection,
+    selectedProps,
+    onApplyStyle,
+    onContentChange,
+    onEnableTextEdit,
+    pexelsQuery,
+    setPexelsQuery,
+    pexelsPhotos,
+    isPexelsLoading,
+    fetchPexels,
+}: DesignTabProps) {
     const [activeShadowLayer, setActiveShadowLayer] = React.useState<number | null>(0);
     if (!hasSelection) {
         return (
@@ -54,6 +79,182 @@ export function DesignTab({ hasSelection, selectedProps, onApplyStyle }: DesignT
 
     return (
         <div className="flex-1 overflow-y-auto bg-white flex flex-col custom-scrollbar pb-10">
+            {/* Element chip */}
+            <div className="flex items-center gap-2 mx-3 mt-3 mb-1 px-3 py-2 bg-slate-50 border border-slate-200/70 rounded-lg shrink-0">
+                <div className="w-5 h-5 rounded-md bg-violet-100 flex items-center justify-center shrink-0">
+                    {selectedProps.isImage
+                        ? <ImageIcon className="w-3 h-3 text-violet-600" />
+                        : <Type className="w-3 h-3 text-violet-600" />}
+                </div>
+                <span className="text-xs font-semibold text-slate-600 flex-1">
+                    {selectedProps.isImage ? "Image element" : `<${selectedProps.elementTag}> element`}
+                </span>
+                <span className="text-[10px] font-bold text-violet-600 bg-violet-50 border border-violet-100 rounded px-1.5 py-0.5">
+                    {selectedProps.elementTag}
+                </span>
+            </div>
+
+            {/* Rich text section (for text elements) */}
+            {!selectedProps.isImage && (
+                <Accordion title="Content" defaultExpanded={true}>
+                    <div className="flex items-center justify-between mb-2">
+                        <label className={labelClass} style={{ marginBottom: 0 }}>Rich text</label>
+                        <Tooltip content="Edit directly in preview" position="bottom">
+                            <button
+                                onClick={onEnableTextEdit}
+                                className="flex items-center gap-1 text-xs font-semibold text-violet-600 hover:text-violet-700 px-2 py-0.5 bg-violet-50 hover:bg-violet-100 rounded transition-all"
+                            >
+                                <PencilLine className="w-3 h-3" />
+                                Live edit
+                            </button>
+                        </Tooltip>
+                    </div>
+                    <RichTextEditor
+                        value={selectedProps.content}
+                        onChange={onContentChange}
+                        placeholder="Write your email copy here…"
+                    />
+                </Accordion>
+            )}
+
+            {/* Image specific sections (Image fit & Stock photos) */}
+            {selectedProps.isImage && (
+                <>
+                    {/* Image fit */}
+                    <Accordion title="Image fit" defaultExpanded={false}>
+                        <div className="pt-1">
+                            <label className={labelClass}>Fit style</label>
+                            <DesignSelect
+                                value={selectedProps.objectFit || "cover"}
+                                onChange={(e) => onApplyStyle({ objectFit: e.target.value })}
+                                options={[
+                                    { label: "Cover — fill & crop",  value: "cover" },
+                                    { label: "Contain — fit inside", value: "contain" },
+                                    { label: "Fill — stretch",        value: "fill" },
+                                    { label: "Original size",         value: "none" },
+                                    { label: "Scale down",            value: "scale-down" },
+                                ]}
+                            />
+                        </div>
+                    </Accordion>
+
+                    {/* Stock photos */}
+                    <Accordion title="Stock photos" defaultExpanded={true}>
+                        <div className="pt-1 space-y-3">
+                            {/* Search bar */}
+                            <div className="flex gap-2">
+                                <div className="relative flex-1">
+                                    <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                                    <input
+                                        type="text"
+                                        value={pexelsQuery}
+                                        onChange={(e) => setPexelsQuery(e.target.value)}
+                                        placeholder="Search e.g. office, tech…"
+                                        className="w-full text-xs pl-8 pr-7 h-9 border border-slate-200 hover:border-slate-300 focus:border-violet-400 focus:ring-0 rounded-lg outline-none transition-all bg-slate-50 focus:bg-white"
+                                        onKeyDown={(e) => e.key === "Enter" && fetchPexels(pexelsQuery)}
+                                    />
+                                    {pexelsQuery && (
+                                        <button
+                                            type="button"
+                                            onClick={() => setPexelsQuery("")}
+                                            className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition-colors"
+                                        >
+                                            <X className="w-3 h-3" />
+                                        </button>
+                                    )}
+                                </div>
+                                <button
+                                    type="button"
+                                    onClick={() => fetchPexels(pexelsQuery)}
+                                    className="px-4 h-9 bg-violet-600 hover:bg-violet-700 text-white text-xs font-semibold rounded-lg transition-all shrink-0 flex items-center justify-center"
+                                >
+                                    Search
+                                </button>
+                            </div>
+
+                            {/* Quick chips */}
+                            <div className="flex gap-1.5 overflow-x-auto scrollbar-hide whitespace-nowrap py-0.5">
+                                {["Office", "Tech", "Nature", "Fashion", "Minimal", "Coffee"].map((chip) => (
+                                    <button
+                                        type="button"
+                                        key={chip}
+                                        onClick={() => { setPexelsQuery(chip.toLowerCase()); fetchPexels(chip); }}
+                                        className={`text-xs font-semibold px-2.5 py-1.5 rounded-full border transition-all inline-block ${
+                                            pexelsQuery.toLowerCase() === chip.toLowerCase()
+                                                ? "bg-violet-50 text-violet-600 border-violet-200"
+                                                : "bg-white text-slate-500 border-slate-200 hover:border-violet-300 hover:text-violet-600"
+                                        }`}
+                                    >
+                                        {chip}
+                                    </button>
+                                ))}
+                            </div>
+
+                            {/* Results grid */}
+                            {isPexelsLoading ? (
+                                <div className="grid grid-cols-3 gap-2">
+                                    {Array.from({ length: 6 }).map((_, i) => (
+                                        <div key={i} className="aspect-square bg-slate-100 animate-pulse rounded-lg" />
+                                    ))}
+                                </div>
+                            ) : pexelsPhotos.length > 0 ? (
+                                <motion.div
+                                    initial="hidden"
+                                    animate="show"
+                                    variants={{
+                                        hidden: { opacity: 0 },
+                                        show: { opacity: 1, transition: { staggerChildren: 0.04 } },
+                                    }}
+                                    className="grid grid-cols-3 gap-2 max-h-[220px] overflow-y-auto pr-0.5 custom-scrollbar"
+                                >
+                                    {pexelsPhotos.map((photo) => {
+                                        const isSelected = selectedProps.src === photo.src.large;
+                                        return (
+                                            <motion.button
+                                                variants={{
+                                                    hidden: { opacity: 0, scale: 0.95 },
+                                                    show: { opacity: 1, scale: 1, transition: { duration: 0.15 } },
+                                                }}
+                                                type="button"
+                                                key={photo.id}
+                                                onClick={() => onApplyStyle({ src: photo.src.large })}
+                                                className={`relative aspect-square rounded-lg overflow-hidden border-2 transition-all group ${
+                                                    isSelected
+                                                        ? "border-violet-500 scale-[0.96]"
+                                                        : "border-transparent hover:border-violet-300"
+                                                }`}
+                                                title={`By ${photo.photographer}`}
+                                            >
+                                                <img
+                                                    src={photo.src.medium}
+                                                    alt={photo.alt}
+                                                    className="w-full h-full object-cover"
+                                                    loading="lazy"
+                                                />
+                                                <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/60 to-transparent p-1.5 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
+                                                    <p className="text-[10px] text-white truncate font-medium">{photo.photographer}</p>
+                                                </div>
+                                                {isSelected && (
+                                                    <div className="absolute top-1 right-1 bg-violet-600 text-white rounded-full p-0.5 border border-white">
+                                                        <Check className="w-2.5 h-2.5 stroke-[3]" />
+                                                    </div>
+                                                )}
+                                            </motion.button>
+                                        );
+                                    })}
+                                </motion.div>
+                            ) : (
+                                <div className="flex flex-col items-center justify-center py-5 text-center border border-dashed border-slate-200 rounded-lg bg-slate-50">
+                                    <Search className="w-4 h-4 text-slate-300 mb-1.5" />
+                                    <p className="text-xs font-semibold text-slate-400">No results yet</p>
+                                    <p className="text-[11px] text-slate-300 mt-0.5">Search above to find stock photos</p>
+                                </div>
+                            )}
+                        </div>
+                    </Accordion>
+                </>
+            )}
+
             {/* Dimension Section */}
             <Accordion title="Dimension" defaultExpanded={false}>
                 <div className="grid grid-cols-2 gap-x-3 gap-y-4 pt-1">

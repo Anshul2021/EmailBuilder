@@ -128,7 +128,8 @@ export default function Home() {
     prompt: string,
     imageBase64: string | null = null,
     mimeType: string | null = null,
-    model: string = "gemini-2.5-flash"
+    model: string = "gemini-2.5-flash",
+    isFresh: boolean = false
   ) => {
     track("Generate Email", { model });
     setLoadingType("generating");
@@ -140,7 +141,7 @@ export default function Home() {
       const resp = await fetch("/api/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ prompt, imageBase64, mimeType, currentMjml: mjml, history: messages, model }),
+        body: JSON.stringify({ prompt, imageBase64, mimeType, currentMjml: isFresh ? "" : mjml, history: isFresh ? [] : messages, model }),
       });
 
       if (!resp.ok) {
@@ -183,11 +184,13 @@ export default function Home() {
       }
 
       const userMessageText = prompt || "Image reference";
-      setMessages(prev => [
-        ...prev,
-        { role: "user", parts: [{ text: userMessageText }], isImage: !!imageBase64, text: userMessageText } as unknown as Message,
-        { role: "model", text: data.mjml } as Message,
-      ]);
+      setMessages(prev => {
+        const newMsgs = [
+          { role: "user", parts: [{ text: userMessageText }], isImage: !!imageBase64, text: userMessageText } as unknown as Message,
+          { role: "model", text: data.mjml } as Message,
+        ];
+        return isFresh ? newMsgs : [...prev, ...newMsgs];
+      });
 
       deductCredits(data.mjml.length + (imageBase64 ? 500 : 0));
     } catch (error: unknown) {

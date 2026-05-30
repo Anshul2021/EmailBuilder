@@ -5,7 +5,7 @@ import {
     SendHorizonal, FileCode, RefreshCw, Sparkles, Paperclip, X,
     ChevronsLeft, ChevronsRight, Check, ChevronDown, AlertCircle,
     Zap, Clock, RotateCcw, Image as ImageIcon, Plus, SlidersHorizontal,
-    ArrowUp, FileText, Video, Music, Archive, UploadCloud, Copy, Loader2
+    ArrowUp, ArrowRight, FileText, Video, Music, Archive, UploadCloud, Copy, Loader2
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { clsx, type ClassValue } from "clsx";
@@ -64,7 +64,7 @@ interface Message {
 }
 
 interface PromptEditorProps {
-    onGenerate: (prompt: string, imageBase64: string | null, mimeType: string | null, model: string) => void;
+    onGenerate: (prompt: string, imageBase64: string | null, mimeType: string | null, model: string, isFresh?: boolean) => void;
     isLoading: boolean;
     hasTemplate: boolean;
     messages: Message[];
@@ -413,7 +413,7 @@ const ModelSelectorDropdown: React.FC<{
         <div className="relative" ref={dropdownRef}>
             <button
                 type="button"
-                className="h-7 px-2 text-xs font-semibold text-slate-600 hover:text-slate-900 hover:bg-slate-50 rounded-lg flex items-center gap-1 transition-colors"
+                className="h-7 px-2 text-xs font-semibold text-slate-600 hover:text-slate-900 bg-slate-100 rounded-lg flex items-center gap-1 transition-colors"
                 onClick={() => setIsOpen(!isOpen)}
             >
                 <Zap className="w-3 h-3 text-violet-500 shrink-0" />
@@ -567,6 +567,28 @@ export function PromptEditor({
     const [isDragging, setIsDragging] = useState(false);
     const [showFullHistory, setShowFullHistory] = useState(false);
     const [fullscreenImageUrl, setFullscreenImageUrl] = useState<string | null>(null);
+    const [hasPasted, setHasPasted] = useState(false);
+
+    const handleCancelPaste = useCallback(() => {
+        setHasPasted(false);
+        setPrompt("");
+        setPastedContent([]);
+        setFiles([]);
+    }, []);
+
+    const processPastedText = useCallback((textData: string) => {
+        setPrompt("Generate this exact email template in a nice professional looking way, follow as it is, and use DM Sans font");
+        const pastedItem: PastedContent = {
+            id: generateId(),
+            content: textData,
+            timestamp: new Date(),
+            wordCount: textData.split(/\s+/).filter(Boolean).length,
+        };
+        setPastedContent([pastedItem]);
+        setHasPasted(true);
+    }, []);
+
+
 
     const messagesEndRef = useRef<HTMLDivElement>(null);
     const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -598,103 +620,100 @@ export function PromptEditor({
             return prev;
         });
 
-        const currentFileCount = files.length;
-        if (currentFileCount >= MAX_FILES) {
-            alert(`Maximum ${MAX_FILES} files allowed.`);
+        // Revoke URLs for existing files to prevent memory leaks, then clear them to enforce a single-file limit
+        setFiles((prev) => {
+            prev.forEach((f) => {
+                if (f.preview && f.preview.startsWith("blob:")) {
+                    URL.revokeObjectURL(f.preview);
+                }
+            });
+            return [];
+        });
+
+        // Take only the first file
+        const fileToAdd = selectedFiles[0];
+        if (!fileToAdd) return;
+
+        if (fileToAdd.size > MAX_FILE_SIZE) {
+            alert(`File ${fileToAdd.name} exceeds the 50MB size limit.`);
             return;
         }
 
-        const availableSlots = MAX_FILES - currentFileCount;
-        const filesToAdd = Array.from(selectedFiles).slice(0, availableSlots);
+        const newFile = {
+            id: generateId(),
+            file: fileToAdd,
+            preview: fileToAdd.type.startsWith("image/") ? URL.createObjectURL(fileToAdd) : undefined,
+            type: fileToAdd.type || "application/octet-stream",
+            uploadStatus: "pending" as const,
+            uploadProgress: 0,
+        };
 
-        if (selectedFiles.length > availableSlots) {
-            alert(`Only ${availableSlots} more file(s) can be added.`);
+        // Initialize state with the new file
+        setFiles([newFile]);
+
+        // Process textual file reading
+        if (isTextualFile(newFile.file)) {
+            readFileAsText(newFile.file)
+                .then((textContent) => {
+                    setFiles((prev) =>
+                        prev.map((f) => (f.id === newFile.id ? { ...f, textContent } : f))
+                    );
+                })
+                .catch((err) => {
+                    console.error("Error reading file text:", err);
+                    setFiles((prev) =>
+                        prev.map((f) => (f.id === newFile.id ? { ...f, uploadStatus: "error" } : f))
+                    );
+                });
         }
 
-        const newFiles = filesToAdd
-            .filter((file) => {
-                if (file.size > MAX_FILE_SIZE) {
-                    alert(`File ${file.name} exceeds the 50MB size limit.`);
-                    return false;
-                }
-                return true;
-            })
-            .map((file) => ({
-                id: generateId(),
-                file,
-                preview: file.type.startsWith("image/") ? URL.createObjectURL(file) : undefined,
-                type: file.type || "application/octet-stream",
-                uploadStatus: "pending" as const,
-                uploadProgress: 0,
-            }));
-
-        setFiles((prev) => [...prev, ...newFiles]);
-
-        newFiles.forEach((fileToUpload) => {
-            // Process textual file reading
-            if (isTextualFile(fileToUpload.file)) {
-                readFileAsText(fileToUpload.file)
-                    .then((textContent) => {
-                        setFiles((prev) =>
-                            prev.map((f) => (f.id === fileToUpload.id ? { ...f, textContent } : f))
-                        );
-                    })
-                    .catch((err) => {
-                        console.error("Error reading file text:", err);
-                        setFiles((prev) =>
-                            prev.map((f) => (f.id === fileToUpload.id ? { ...f, uploadStatus: "error" } : f))
-                        );
-                    });
-            }
-
-            // Process image file reading (base64)
-            if (fileToUpload.file.type.startsWith("image/")) {
-                readImageAsBase64(fileToUpload.file)
-                    .then(({ base64, mimeType, dataUrl }) => {
-                        setFiles((prev) =>
-                            prev.map((f) =>
-                                f.id === fileToUpload.id
-                                    ? { ...f, base64Data: base64, mimeType, preview: dataUrl }
-                                    : f
-                            )
-                        );
-                    })
-                    .catch((err) => {
-                        console.error("Error converting image:", err);
-                        setFiles((prev) =>
-                            prev.map((f) => (f.id === fileToUpload.id ? { ...f, uploadStatus: "error" } : f))
-                        );
-                    });
-            }
-
-            // Simulate uploading
-            setFiles((prev) =>
-                prev.map((f) => (f.id === fileToUpload.id ? { ...f, uploadStatus: "uploading" } : f))
-            );
-
-            let progress = 0;
-            const interval = setInterval(() => {
-                progress += Math.random() * 25 + 10;
-                if (progress >= 100) {
-                    progress = 100;
-                    clearInterval(interval);
+        // Process image file reading (base64)
+        if (newFile.file.type.startsWith("image/")) {
+            readImageAsBase64(newFile.file)
+                .then(({ base64, mimeType, dataUrl }) => {
                     setFiles((prev) =>
                         prev.map((f) =>
-                            f.id === fileToUpload.id
-                                ? { ...f, uploadStatus: "complete", uploadProgress: 100 }
+                            f.id === newFile.id
+                                ? { ...f, base64Data: base64, mimeType, preview: dataUrl }
                                 : f
                         )
                     );
-                } else {
+                })
+                .catch((err) => {
+                    console.error("Error converting image:", err);
                     setFiles((prev) =>
-                        prev.map((f) =>
-                            f.id === fileToUpload.id ? { ...f, uploadProgress: progress } : f
-                        )
+                        prev.map((f) => (f.id === newFile.id ? { ...f, uploadStatus: "error" } : f))
                     );
-                }
-            }, 100);
-        });
-    }, [files.length]);
+                });
+        }
+
+        // Simulate uploading
+        setFiles((prev) =>
+            prev.map((f) => (f.id === newFile.id ? { ...f, uploadStatus: "uploading" } : f))
+        );
+
+        let progress = 0;
+        const interval = setInterval(() => {
+            progress += Math.random() * 25 + 10;
+            if (progress >= 100) {
+                progress = 100;
+                clearInterval(interval);
+                setFiles((prev) =>
+                    prev.map((f) =>
+                        f.id === newFile.id
+                            ? { ...f, uploadStatus: "complete", uploadProgress: 100 }
+                            : f
+                    )
+                );
+            } else {
+                setFiles((prev) =>
+                    prev.map((f) =>
+                        f.id === newFile.id ? { ...f, uploadProgress: progress } : f
+                    )
+                );
+            }
+        }, 100);
+    }, []);
 
     const removeFile = useCallback((id: string) => {
         setFiles((prev) => {
@@ -718,28 +737,66 @@ export function PromptEditor({
             const dataTransfer = new DataTransfer();
             pastedFiles.forEach((file) => dataTransfer.items.add(file));
             handleFileSelect(dataTransfer.files);
+            setHasPasted(true);
             return;
         }
 
         const textData = clipboardData.getData("text");
-        if (textData && textData.length > PASTE_THRESHOLD && pastedContent.length < 5) {
+        if (textData) {
             e.preventDefault();
-            // Set default prompt if currently empty
-            setPrompt((prev) => {
-                if (!prev.trim()) {
-                    return "Generate this exact email template in a nice professional looking way, follow as it is, and use DM Sans font";
-                }
-                return prev + textData.slice(0, PASTE_THRESHOLD) + "...";
-            });
-            const pastedItem: PastedContent = {
-                id: generateId(),
-                content: textData,
-                timestamp: new Date(),
-                wordCount: textData.split(/\s+/).filter(Boolean).length,
-            };
-            setPastedContent((prev) => [...prev, pastedItem]);
+            processPastedText(textData);
         }
-    }, [handleFileSelect, files.length, pastedContent.length]);
+    }, [handleFileSelect, files.length, processPastedText]);
+
+    useEffect(() => {
+        const handleGlobalPaste = (e: ClipboardEvent) => {
+            const target = e.target as HTMLElement;
+            if (target && (
+                target.tagName === "INPUT" || 
+                target.tagName === "TEXTAREA" || 
+                target.hasAttribute("contenteditable") || 
+                target.closest('[contenteditable="true"]') ||
+                target.closest('.ql-editor')
+            )) {
+                return;
+            }
+
+            const clipboardData = e.clipboardData;
+            if (!clipboardData) return;
+
+            const fileItems = Array.from(clipboardData.items).filter((item) => item.kind === "file");
+            if (fileItems.length > 0 && files.length < MAX_FILES) {
+                e.preventDefault();
+                const pastedFiles = fileItems.map((item) => item.getAsFile()).filter(Boolean) as File[];
+                const dataTransfer = new DataTransfer();
+                pastedFiles.forEach((file) => dataTransfer.items.add(file));
+                handleFileSelect(dataTransfer.files);
+                setHasPasted(true);
+                return;
+            }
+
+            const textData = clipboardData.getData("text");
+            if (textData) {
+                e.preventDefault();
+                processPastedText(textData);
+            }
+        };
+
+        const handleIframePaste = (e: Event) => {
+            const customEvent = e as CustomEvent;
+            const textData = customEvent.detail?.text;
+            if (textData) {
+                processPastedText(textData);
+            }
+        };
+
+        window.addEventListener("paste", handleGlobalPaste);
+        window.addEventListener("iframe-paste", handleIframePaste);
+        return () => {
+            window.removeEventListener("paste", handleGlobalPaste);
+            window.removeEventListener("iframe-paste", handleIframePaste);
+        };
+    }, [processPastedText, handleFileSelect, files.length]);
 
     // Drag-and-drop callbacks
     const handleDragOver = useCallback((e: React.DragEvent) => {
@@ -784,7 +841,7 @@ export function PromptEditor({
         const base64Data = imageFile?.base64Data || null;
         const mimeType = imageFile?.mimeType || null;
 
-        onGenerate(finalPrompt, base64Data, mimeType, selectedModel);
+        onGenerate(finalPrompt, base64Data, mimeType, selectedModel, hasPasted);
 
         // Reset input card state
         setPrompt("");
@@ -795,8 +852,9 @@ export function PromptEditor({
         });
         setFiles([]);
         setPastedContent([]);
+        setHasPasted(false);
         if (textareaRef.current) textareaRef.current.style.height = "auto";
-    }, [prompt, files, pastedContent, isLoading, usage, selectedModel, onGenerate]);
+    }, [prompt, files, pastedContent, isLoading, usage, selectedModel, onGenerate, hasPasted]);
 
     const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLTextAreaElement>) => {
         if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
@@ -978,11 +1036,17 @@ export function PromptEditor({
                     )}
 
                     {/* Intercept-based File Upload + Chat Box */}
-                    <div
+                    <motion.div
+                        layout
                         className="relative w-full"
                         onDragOver={handleDragOver}
                         onDragLeave={handleDragLeave}
                         onDrop={handleDrop}
+                        transition={{
+                            type: "spring",
+                            stiffness: 400,
+                            damping: 38
+                        }}
                     >
                         {isDragging && (
                             <div className="absolute inset-0 z-50 bg-violet-50/95 border-2 border-dashed border-violet-400 rounded-2xl flex flex-col items-center justify-center pointer-events-none transition-all">
@@ -993,80 +1057,74 @@ export function PromptEditor({
                             </div>
                         )}
 
-                        <BorderGlow
-                            glowColor="262 80% 80%"
-                            backgroundColor="#ffffff"
-                            borderRadius={16}
-                            glowRadius={30}
-                            glowIntensity={1.0}
-                            fillOpacity={0.05}
-                            colors={['#8b5cf6', '#a855f7', '#d8b4fe']}
-                            className="w-full"
-                        >
-                            <div className="w-full bg-transparent focus-within:ring-2 focus-within:ring-violet-500/10 rounded-2xl items-end gap-1 flex flex-col relative transition-all">
-                                {/* Horizontal scroll list of preview cards */}
-                                {(files.length > 0 || pastedContent.length > 0) && (
-                                    <div className="overflow-x-auto border-b border-slate-100 p-3 w-full bg-slate-50/50 hide-scroll-bar rounded-t-2xl">
-                                        <div className="flex gap-3">
-                                            {pastedContent.map((content) => (
-                                                <PastedContentCard
-                                                    key={content.id}
-                                                    content={content}
-                                                    onRemove={(id) =>
-                                                        setPastedContent((prev) => prev.filter((c) => c.id !== id))
-                                                    }
-                                                />
-                                            ))}
-                                            {files.map((file) => (
-                                                <FilePreviewCard
-                                                    key={file.id}
-                                                    file={file}
-                                                    onRemove={removeFile}
-                                                    onPreviewClick={setFullscreenImageUrl}
-                                                />
-                                            ))}
+                        <AnimatePresence mode="wait">
+                            {hasPasted ? (
+                                <motion.div
+                                    key="generate-button"
+                                    initial={{ opacity: 0, scale: 0.96, y: 10 }}
+                                    animate={{ opacity: 1, scale: 1, y: 0 }}
+                                    exit={{ opacity: 0, scale: 0.96, y: -10 }}
+                                    transition={{ duration: 0.2, ease: "easeInOut" }}
+                                    className="flex flex-col gap-2.5 w-full"
+                                >
+                                    {/* Horizontal scroll list of preview cards (images or text) */}
+                                    {(files.length > 0 || pastedContent.length > 0) && (
+                                        <div className="overflow-x-auto border border-slate-200/60 p-3 w-full bg-slate-50/50 hide-scroll-bar rounded-2xl">
+                                            <div className="flex gap-3">
+                                                {pastedContent.map((content) => (
+                                                    <PastedContentCard
+                                                        key={content.id}
+                                                        content={content}
+                                                        onRemove={(id) =>
+                                                            setPastedContent((prev) => prev.filter((c) => c.id !== id))
+                                                        }
+                                                    />
+                                                ))}
+                                                {files.map((file) => (
+                                                    <FilePreviewCard
+                                                        key={file.id}
+                                                        file={file}
+                                                        onRemove={removeFile}
+                                                        onPreviewClick={setFullscreenImageUrl}
+                                                    />
+                                                ))}
+                                            </div>
                                         </div>
-                                    </div>
-                                )}
+                                    )}
 
-                                {/* Prompt Input Textarea */}
-                                <textarea
-                                    ref={textareaRef}
-                                    value={prompt}
-                                    onChange={(e) => setPrompt(e.target.value)}
-                                    onPaste={handlePaste}
-                                    onKeyDown={handleKeyDown}
-                                    placeholder={
-                                        limitReached
-                                            ? "Limit reached. Try again tomorrow."
-                                            : hasTemplate
-                                            ? "Describe changes to your email..."
-                                            : "Describe the email you want to build..."
-                                    }
-                                    disabled={isLoading || limitReached}
-                                    className="flex-1 min-h-[100px] w-full px-4 pt-3.5 pb-1 focus:outline-none border-none outline-none focus-within:ring-0 max-h-[140px] resize-none bg-transparent text-slate-800 placeholder:text-slate-400 text-sm leading-relaxed custom-scrollbar disabled:cursor-not-allowed disabled:text-slate-400"
-                                    rows={1}
-                                />
-
-                                {/* Toolbar actions bar */}
-                                <div className="flex items-center gap-2 justify-between w-full px-3 pb-2">
-                                    <div className="flex items-center gap-1">
+                                    <div className="flex gap-2 items-center w-full">
                                         <button
                                             type="button"
-                                            className="h-7 w-7 rounded-lg flex items-center justify-center text-slate-400 hover:text-slate-600 hover:bg-slate-50 flex-shrink-0 transition-colors"
-                                            onClick={() => fileInputRef.current?.click()}
-                                            disabled={isLoading || limitReached || files.length >= MAX_FILES}
-                                            title={
-                                                files.length >= MAX_FILES
-                                                    ? `Max ${MAX_FILES} images reached`
-                                                    : "Attach image"
-                                            }
+                                            onClick={handleSend}
+                                            disabled={isLoading}
+                                            className="flex-1 h-11 bg-violet-600 hover:bg-violet-700 active:scale-[0.99] text-white font-semibold rounded-xl shadow-sm hover:shadow transition-all flex items-center justify-center gap-2 group text-sm relative overflow-hidden disabled:opacity-75 disabled:cursor-not-allowed"
                                         >
-                                            <ImageIcon className="h-4 w-4" />
+                                            {isLoading ? (
+                                                <>
+                                                    <Loader2 className="h-4 w-4 animate-spin" />
+                                                    <span>Generating template...</span>
+                                                </>
+                                            ) : (
+                                                <>
+                                                    <span>Generate Template</span>
+                                                    <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
+                                                </>
+                                            )}
+                                        </button>
+
+                                        <button
+                                            type="button"
+                                            onClick={handleCancelPaste}
+                                            disabled={isLoading}
+                                            className="w-11 h-11 bg-slate-50 hover:bg-slate-100 text-slate-500 hover:text-slate-700 rounded-xl transition-all flex items-center justify-center shrink-0 border border-slate-200/50 hover:scale-[1.02] active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed"
+                                            title="Clear pasted content"
+                                        >
+                                            <X className="w-4 h-4" />
                                         </button>
                                     </div>
 
-                                    <div className="flex items-center gap-2">
+                                    {/* Model switching option on the right most corner */}
+                                    <div className="flex justify-end w-full px-1">
                                         <ModelSelectorDropdown
                                             models={GEMINI_MODELS}
                                             selectedModel={selectedModel}
@@ -1074,29 +1132,124 @@ export function PromptEditor({
                                             hasTemplate={hasTemplate}
                                             usage={usage}
                                         />
-
-                                        <button
-                                            type="button"
-                                            className={cn(
-                                                "h-7 w-7 flex items-center justify-center flex-shrink-0 rounded-lg transition-all shadow-sm",
-                                                canSend
-                                                    ? "bg-violet-600 hover:bg-violet-700 text-white hover:scale-[1.02] active:scale-[0.98]"
-                                                    : "bg-slate-100 text-slate-300 cursor-not-allowed shadow-none"
-                                            )}
-                                            onClick={handleSend}
-                                            disabled={!canSend}
-                                            title="Send message"
-                                        >
-                                            {isLoading ? (
-                                                <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                                            ) : (
-                                                <ArrowUp className="h-3.5 w-3.5 stroke-[2.5]" />
-                                            )}
-                                        </button>
                                     </div>
-                                </div>
-                            </div>
-                        </BorderGlow>
+                                </motion.div>
+                            ) : (
+                                <motion.div
+                                    key="prompt-bar"
+                                    initial={{ opacity: 0, scale: 0.98, y: 5 }}
+                                    animate={{ opacity: 1, scale: 1, y: 0 }}
+                                    exit={{ opacity: 0, scale: 0.98, y: -5 }}
+                                    transition={{ duration: 0.2, ease: "easeInOut" }}
+                                    className="w-full"
+                                >
+                                    <BorderGlow
+                                        glowColor="262 80% 80%"
+                                        backgroundColor="#ffffff"
+                                        borderRadius={16}
+                                        glowRadius={30}
+                                        glowIntensity={1.0}
+                                        fillOpacity={0.05}
+                                        colors={['#8b5cf6', '#a855f7', '#d8b4fe']}
+                                        className="w-full"
+                                    >
+                                        <div className="w-full bg-transparent focus-within:ring-2 focus-within:ring-violet-500/10 rounded-2xl items-end gap-1 flex flex-col relative transition-all">
+                                            {/* Horizontal scroll list of preview cards */}
+                                            {(files.length > 0 || pastedContent.length > 0) && (
+                                                <div className="overflow-x-auto border-b border-slate-100 p-3 w-full bg-slate-50/50 hide-scroll-bar rounded-t-2xl">
+                                                    <div className="flex gap-3">
+                                                        {pastedContent.map((content) => (
+                                                            <PastedContentCard
+                                                                key={content.id}
+                                                                content={content}
+                                                                onRemove={(id) =>
+                                                                    setPastedContent((prev) => prev.filter((c) => c.id !== id))
+                                                                }
+                                                            />
+                                                        ))}
+                                                        {files.map((file) => (
+                                                            <FilePreviewCard
+                                                                key={file.id}
+                                                                file={file}
+                                                                onRemove={removeFile}
+                                                                onPreviewClick={setFullscreenImageUrl}
+                                                            />
+                                                        ))}
+                                                    </div>
+                                                </div>
+                                            )}
+
+                                            {/* Prompt Input Textarea */}
+                                            <textarea
+                                                ref={textareaRef}
+                                                value={prompt}
+                                                onChange={(e) => setPrompt(e.target.value)}
+                                                onPaste={handlePaste}
+                                                onKeyDown={handleKeyDown}
+                                                placeholder={
+                                                    limitReached
+                                                        ? "Limit reached. Try again tomorrow."
+                                                        : hasTemplate
+                                                        ? "Describe changes to your email..."
+                                                        : "Describe the email you want to build..."
+                                                }
+                                                disabled={isLoading || limitReached}
+                                                className="flex-1 min-h-[100px] w-full px-4 pt-3.5 pb-1 focus:outline-none border-none outline-none focus-within:ring-0 max-h-[140px] resize-none bg-transparent text-slate-800 placeholder:text-slate-400 text-sm leading-relaxed custom-scrollbar disabled:cursor-not-allowed disabled:text-slate-400"
+                                                rows={1}
+                                            />
+
+                                            {/* Toolbar actions bar */}
+                                            <div className="flex items-center gap-2 justify-between w-full px-3 pb-2">
+                                                <div className="flex items-center gap-1">
+                                                    <button
+                                                        type="button"
+                                                        className="h-7 w-7 rounded-lg flex items-center justify-center text-slate-400 hover:text-slate-600 hover:bg-slate-50 flex-shrink-0 transition-colors"
+                                                        onClick={() => fileInputRef.current?.click()}
+                                                        disabled={isLoading || limitReached || files.length >= MAX_FILES}
+                                                        title={
+                                                            files.length >= MAX_FILES
+                                                                ? `Max ${MAX_FILES} images reached`
+                                                                : "Attach image"
+                                                        }
+                                                    >
+                                                        <ImageIcon className="h-4 w-4" />
+                                                    </button>
+                                                </div>
+
+                                                <div className="flex items-center gap-2">
+                                                    <ModelSelectorDropdown
+                                                        models={GEMINI_MODELS}
+                                                        selectedModel={selectedModel}
+                                                        onModelChange={onModelChange}
+                                                        hasTemplate={hasTemplate}
+                                                        usage={usage}
+                                                    />
+
+                                                    <button
+                                                        type="button"
+                                                        className={cn(
+                                                            "h-7 w-7 flex items-center justify-center flex-shrink-0 rounded-lg transition-all shadow-sm",
+                                                            canSend
+                                                                ? "bg-violet-600 hover:bg-violet-700 text-white hover:scale-[1.02] active:scale-[0.98]"
+                                                                : "bg-slate-100 text-slate-300 cursor-not-allowed shadow-none"
+                                                        )}
+                                                        onClick={handleSend}
+                                                        disabled={!canSend}
+                                                        title="Send message"
+                                                    >
+                                                        {isLoading ? (
+                                                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                                        ) : (
+                                                            <ArrowUp className="h-3.5 w-3.5 stroke-[2.5]" />
+                                                        )}
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </BorderGlow>
+                                </motion.div>
+                            )}
+                        </AnimatePresence>
 
                         <input
                             ref={fileInputRef}
@@ -1109,7 +1262,7 @@ export function PromptEditor({
                                 if (e.target) e.target.value = "";
                             }}
                         />
-                    </div>
+                    </motion.div>
                 </div>
             </motion.div>
 

@@ -432,6 +432,14 @@ export function LivePreview({
                     caret-color: #7c3aed !important;
                 }
 
+                /* Icon drag-and-drop drop target highlight */
+                [data-ag-drop-target] {
+                    outline: 2px dashed #7c3aed !important;
+                    outline-offset: 3px;
+                    background-color: rgba(124, 58, 237, 0.06) !important;
+                    border-radius: 4px;
+                }
+
                 .ag-hover-image-tools {
                     position: absolute;
                     display: none;
@@ -1456,6 +1464,80 @@ export function LivePreview({
 
         doc.addEventListener("keydown", (e) => {
             if (e.key === "Escape") clearSelection();
+        });
+
+        // ── Icon drag-and-drop from PropertiesPanel Icons tab ──
+        doc.addEventListener("dragover", (e) => {
+            e.preventDefault();
+            if (e.dataTransfer) e.dataTransfer.dropEffect = "copy";
+            // Highlight drop target
+            const el = doc.elementFromPoint(e.clientX, e.clientY) as HTMLElement | null;
+            doc.querySelectorAll("[data-ag-drop-target]").forEach(n => (n as HTMLElement).removeAttribute("data-ag-drop-target"));
+            if (el && el !== doc.body) el.setAttribute("data-ag-drop-target", "1");
+        });
+
+        doc.addEventListener("dragleave", (e) => {
+            if (!e.relatedTarget || !(doc.documentElement.contains(e.relatedTarget as Node))) {
+                doc.querySelectorAll("[data-ag-drop-target]").forEach(n => (n as HTMLElement).removeAttribute("data-ag-drop-target"));
+            }
+        });
+
+        doc.addEventListener("drop", (e) => {
+            e.preventDefault();
+            doc.querySelectorAll("[data-ag-drop-target]").forEach(n => (n as HTMLElement).removeAttribute("data-ag-drop-target"));
+            if (!e.dataTransfer) return;
+
+            // Prefer our custom type, fall back to text/plain
+            const iconUrl =
+                e.dataTransfer.getData("application/x-ph-icon-url") ||
+                e.dataTransfer.getData("text/plain");
+
+            // Only handle icon drops (SVG data-URL or Iconify CDN)
+            if (!iconUrl || (!iconUrl.startsWith("data:image/svg+xml") && !iconUrl.includes("iconify.design"))) return;
+
+            const target = doc.elementFromPoint(e.clientX, e.clientY) as HTMLElement | null;
+            saveVersion(doc.documentElement.outerHTML);
+
+            if (target && target.tagName === "IMG") {
+                // Replace existing image src
+                (target as HTMLImageElement).src = iconUrl;
+                target.setAttribute("src", iconUrl);
+                propagateChanges();
+            } else {
+                // Find the nearest block container to insert into
+                let container: Element | null = target;
+                while (container && !["TD", "DIV", "BODY", "TABLE"].includes(container.tagName.toUpperCase())) {
+                    container = container.parentElement;
+                }
+                if (!container) container = doc.body;
+
+                const img = doc.createElement("img");
+                img.src = iconUrl;
+                img.setAttribute("src", iconUrl);
+                img.style.cssText = "display:inline-block;vertical-align:middle;max-width:100%;";
+                container.appendChild(img);
+                propagateChanges();
+            }
+        });
+
+        // Listen to paste events inside the iframe document and forward to parent window
+        doc.addEventListener("paste", (e: ClipboardEvent) => {
+            const text = e.clipboardData?.getData("text");
+            if (text) {
+                const target = e.target as HTMLElement;
+                if (target && (
+                    target.tagName === "INPUT" || 
+                    target.tagName === "TEXTAREA" || 
+                    target.hasAttribute("contenteditable") || 
+                    target.closest('[contenteditable="true"]') ||
+                    target.closest('.ql-editor')
+                )) {
+                    return;
+                }
+                e.preventDefault();
+                const customPasteEvent = new CustomEvent("iframe-paste", { detail: { text } });
+                window.dispatchEvent(customPasteEvent);
+            }
         });
 
         // Polling update for layout shifts

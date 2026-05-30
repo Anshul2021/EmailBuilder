@@ -817,12 +817,21 @@ export function PromptEditor({
                         </div>
                     </div>
 
-                    {usage && (
-                        <div className={`flex items-center gap-1.5 border rounded-full px-2.5 py-1 text-xs font-semibold ${usagePillColor}`}>
-                            <Clock className="w-3 h-3" />
-                            <span>{usage.remaining}/{usage.limit} today</span>
-                        </div>
-                    )}
+                    <div className="flex items-center gap-2">
+                        {usage && (
+                            <div className={`flex items-center gap-1.5 border rounded-full px-2.5 py-1 text-xs font-semibold ${usagePillColor}`}>
+                                <Clock className="w-3 h-3" />
+                                <span>{usage.remaining}/{usage.limit} today</span>
+                            </div>
+                        )}
+                        <button
+                            onClick={onResetUsage}
+                            className="text-[10px] font-bold text-violet-600 hover:text-white border border-violet-200 hover:border-violet-600 hover:bg-violet-600 px-2 py-1 rounded-lg transition-all"
+                            title="Reset daily model generation limits"
+                        >
+                            Reset Limits
+                        </button>
+                    </div>
                 </div>
 
 

@@ -147,6 +147,7 @@ export async function POST(req: NextRequest) {
         let mjmlCode = "";
         let resolvedModel = primaryModel;
         let lastError: unknown = null;
+        const failedModels: Record<string, string> = {};
 
         for (let i = 0; i < modelQueue.length; i++) {
             const currentModel = modelQueue[i];
@@ -204,6 +205,7 @@ Return the complete updated MJML. Modify only what was requested, preserve every
 
                 const errObj = genError as { message?: string; status?: number };
                 const errMsg: string = errObj?.message || String(genError);
+                failedModels[currentModel] = errMsg;
                 const status: number = errObj?.status || 500;
 
                 // Identify if the error is transient/overloaded (503, 429, or specific message patterns)
@@ -289,7 +291,8 @@ Return the complete updated MJML. Modify only what was requested, preserve every
                 mjml: mjmlCode, 
                 html, 
                 modelUsed: resolvedModel,
-                usage: updatedUsage
+                usage: updatedUsage,
+                failedModels
             });
 
         } catch (compileError: unknown) {

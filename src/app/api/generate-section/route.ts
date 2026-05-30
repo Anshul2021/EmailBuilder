@@ -87,6 +87,7 @@ export async function POST(req: NextRequest) {
         let sectionCode = "";
         let resolvedModel = primaryModel;
         let lastError: unknown = null;
+        const failedModels: Record<string, string> = {};
 
         for (let i = 0; i < modelQueue.length; i++) {
             const currentModel = modelQueue[i];
@@ -138,6 +139,7 @@ export async function POST(req: NextRequest) {
 
                 const errObj = genError as { message?: string; status?: number };
                 const errMsg = errObj?.message || String(genError);
+                failedModels[currentModel] = errMsg;
                 const status = errObj?.status || 500;
 
                 const isTransient = 
@@ -176,7 +178,7 @@ export async function POST(req: NextRequest) {
             return NextResponse.json({ error: errMsg, code: "GENERATION_FAILED" }, { status: 500 });
         }
 
-        return NextResponse.json({ sectionMjml: sectionCode, modelUsed: resolvedModel });
+        return NextResponse.json({ sectionMjml: sectionCode, modelUsed: resolvedModel, failedModels });
 
     } catch (error: unknown) {
         const msg = error instanceof Error ? error.message : String(error);

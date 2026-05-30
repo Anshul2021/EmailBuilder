@@ -9,19 +9,26 @@ export interface IPUsage {
 const usageMap = new Map<string, IPUsage>();
 
 export const MODEL_LIMITS: Record<string, number> = {
-    "gemini-3.5-flash": 2,
-    "gemini-3-flash": 3,
-    "gemini-3.1-flash-lite": 5,
-    "gemini-2.5-flash": 6,
-    "gemini-2.5-flash-lite": 8,
+    "gemini-3.5-flash": 100,
+    "gemini-3-flash": 100,
+    "gemini-3.1-flash-lite": 500,
+    "gemini-2.5-flash": 200,
+    "gemini-2.5-flash-lite": 500,
 };
 
 export function getClientIp(req: NextRequest): string {
     const forwarded = req.headers.get("x-forwarded-for");
+    let ip = "127.0.0.1";
     if (forwarded) {
-        return forwarded.split(/\s*,\s*/)[0];
+        ip = forwarded.split(/\s*,\s*/)[0];
+    } else {
+        ip = req.headers.get("x-real-ip") || "127.0.0.1";
     }
-    return req.headers.get("x-real-ip") || "127.0.0.1";
+    // Normalize localhost loopback interfaces
+    if (ip === "::1" || ip === "::ffff:127.0.0.1" || ip === "localhost") {
+        return "127.0.0.1";
+    }
+    return ip;
 }
 
 function getTodayString(): string {

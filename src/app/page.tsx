@@ -178,7 +178,8 @@ export default function Home() {
         };
         const requestedLabel = modelLabels[model] || model;
         const usedLabel = modelLabels[data.modelUsed] || data.modelUsed;
-        setInfoMsg(`"${requestedLabel}" was overloaded. Automatically fell back to "${usedLabel}" to complete your request.`);
+        const failReason = data.failedModels?.[model] ? ` (${data.failedModels[model]})` : "";
+        setInfoMsg(`"${requestedLabel}" was bypassed${failReason}. Automatically fell back to "${usedLabel}" to complete your request.`);
       }
 
       const userMessageText = prompt || "Image reference";
@@ -251,7 +252,8 @@ export default function Home() {
         };
         const requestedLabel = modelLabels[selectedModel] || selectedModel;
         const usedLabel = modelLabels[data.modelUsed] || data.modelUsed;
-        setInfoMsg(`"${requestedLabel}" was overloaded. Automatically fell back to "${usedLabel}" for section edit.`);
+        const failReason = data.failedModels?.[selectedModel] ? ` (${data.failedModels[selectedModel]})` : "";
+        setInfoMsg(`"${requestedLabel}" was bypassed${failReason}. Automatically fell back to "${usedLabel}" for section edit.`);
       }
 
       const updatedMjml = replaceMjmlSection(mjml, sectionIndex, data.sectionMjml);

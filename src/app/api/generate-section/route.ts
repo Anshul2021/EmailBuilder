@@ -13,9 +13,9 @@ const ai = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "");
  * that is not placehold.co into a standard placehold.co placeholder image.
  */
 function sanitizeImageSources(mjmlCode: string): string {
-    // Regex matches src="URL" or src='URL' where URL starts with http/https but NOT placehold.co
+    // Regex matches src="URL" or src='URL' where URL starts with http/https but NOT placehold.co and NOT images.pexels.com
     // Capture the quote character in group 1, and the URL in group 2
-    return mjmlCode.replace(/src=(["'])(https?:\/\/(?!placehold\.co)[^"'\s>]+)\1/gi, (match, quote, url) => {
+    return mjmlCode.replace(/src=(["'])(https?:\/\/(?!placehold\.co|images\.pexels\.com)[^"'\s>]+)\1/gi, (match, quote, url) => {
         let width = "600";
         let height = "400";
         let text = "Image+Placeholder";
@@ -123,6 +123,9 @@ export async function POST(req: NextRequest) {
                 if (sectionMatch) {
                     sectionCode = sectionMatch[0];
                 }
+
+                // Resolve Pexels images if there are any placeholders
+                sectionCode = await resolvePexelsImages(sectionCode);
 
                 // Rewrite all external/unauthorized image URLs to placehold.co text placeholders
                 sectionCode = sanitizeImageSources(sectionCode);

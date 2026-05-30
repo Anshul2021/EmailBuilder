@@ -234,6 +234,7 @@ export function LivePreview({
     const ghostElementRef = useRef<HTMLElement | null>(null);
     const dropTargetRef = useRef<HTMLElement | null>(null);
     const dropPositionRef = useRef<"before" | "after">("before");
+    const imageToolsTimeoutRef = useRef<any>(null);
 
     // Refs to avoid stale closures in iframe event listeners
     const onMjmlChangeRef = useRef(onMjmlChange);
@@ -244,6 +245,14 @@ export function LivePreview({
     useEffect(() => { mjmlRef.current = mjml; }, [mjml]);
     useEffect(() => { onLayerSelectRef.current = onLayerSelect; }, [onLayerSelect]);
     useEffect(() => { mjmlTreeRef.current = mjmlTree; }, [mjmlTree]);
+
+    useEffect(() => {
+        return () => {
+            if (imageToolsTimeoutRef.current) {
+                clearTimeout(imageToolsTimeoutRef.current);
+            }
+        };
+    }, []);
 
     // ── Bidirectional layer ↔ preview highlight ──
     // When hoveredLayerNodeId or selectedLayerNodeId changes, find the matching
@@ -426,20 +435,26 @@ export function LivePreview({
                 .ag-hover-image-tools {
                     position: absolute;
                     display: none;
-                    flex-direction: column;
+                    flex-direction: row;
                     align-items: center;
                     gap: 6px;
                     z-index: 1001;
                     font-family: 'Plus Jakarta Sans', sans-serif !important;
+                    background: white;
+                    border: 1px solid #e2e8f0;
+                    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08), 0 1px 4px rgba(0, 0, 0, 0.04);
+                    border-radius: 8px;
+                    padding: 4px 6px;
+                    pointer-events: auto;
                 }
                 .ag-hover-replace-btn {
                     background: #7c3aed;
                     color: white;
                     border: none;
                     border-radius: 6px;
-                    padding: 8px 14px;
-                    font-size: 15px !important;
-                    font-weight: 500 !important;
+                    padding: 5px 10px;
+                    font-size: 12px !important;
+                    font-weight: 600 !important;
                     font-family: 'Plus Jakarta Sans', sans-serif !important;
                     cursor: pointer;
                     display: flex;
@@ -457,9 +472,9 @@ export function LivePreview({
                     color: #ef4444;
                     border: 1px solid #fee2e2;
                     border-radius: 6px;
-                    padding: 6px 14px;
-                    font-size: 13px !important;
-                    font-weight: 500 !important;
+                    padding: 5px 10px;
+                    font-size: 12px !important;
+                    font-weight: 600 !important;
                     font-family: 'Plus Jakarta Sans', sans-serif !important;
                     cursor: pointer;
                     display: flex;
@@ -467,7 +482,7 @@ export function LivePreview({
                     justify-content: center;
                     transition: background 0.15s ease, border-color 0.15s ease;
                     outline: none;
-                    width: 100%;
+                    width: auto;
                     box-sizing: border-box;
                 }
                 .ag-hover-reset-btn:hover {
@@ -970,6 +985,11 @@ export function LivePreview({
         const win = iframe.contentWindow;
         if (!win) return;
 
+        if (imageToolsTimeoutRef.current) {
+            clearTimeout(imageToolsTimeoutRef.current);
+            imageToolsTimeoutRef.current = null;
+        }
+
         injectIframeStyles(doc);
 
         const EDITABLE_TAGS = ["P", "DIV", "H1", "H2", "H3", "H4", "H5", "H6", "TD", "TR", "TABLE", "TBODY", "SPAN", "A", "STRONG", "B", "I", "EM"];
@@ -1100,25 +1120,90 @@ export function LivePreview({
             const isOverImg = target.tagName === "IMG";
             const isOverBtn = target === hoverImageTools || hoverImageTools?.contains(target);
 
-            if ((isOverImg || isOverBtn) && !isResizingRef.current && !isBlockDraggingRef.current) {
-                const activeImg = isOverImg ? target : (hoverImageTools as any)?._targetImg;
-                if (activeImg) {
-                    const rect = activeImg.getBoundingClientRect();
-                    const scrollX = win.scrollX;
-                    const scrollY = win.scrollY;
-                    if (hoverImageTools) {
-                        const panelWidth = 145;
-                        const panelHeight = 72;
-                        hoverImageTools.style.left = `${rect.left + scrollX + (rect.width - panelWidth) / 2}px`;
-                        hoverImageTools.style.top = `${rect.top + scrollY + (rect.height - panelHeight) / 2}px`;
+            let activeImg = (hoverImageTools as any)?._targetImg;
+            if (isOverImg) {
+                activeImg = target;
+            }
+
+            let isNearImg = false;
+            let isNearBtn = false;
+
+            if (activeImg) {
+                const rect = activeImg.getBoundingClientRect();
+                isNearImg = (
+                    e.clientX >= rect.left - 25 &&
+                    e.clientX <= rect.right + 25 &&
+                    e.clientY >= rect.top - 25 &&
+                    e.clientY <= rect.bottom + 25
+                );
+            }
+
+            if (hoverImageTools && hoverImageTools.style.display === "flex") {
+                const rect = hoverImageTools.getBoundingClientRect();
+                isNearBtn = (
+                    e.clientX >= rect.left - 25 &&
+                    e.clientX <= rect.right + 25 &&
+                    e.clientY >= rect.top - 25 &&
+                    e.clientY <= rect.bottom + 25
+                );
+            }
+
+            const shouldKeepVisible = (isOverImg || isOverBtn || isNearImg || isNearBtn) && !isResizingRef.current && !isBlockDraggingRef.current;
+
+            if (shouldKeepVisible && activeImg) {
+                if (imageToolsTimeoutRef.current) {
+                    clearTimeout(imageToolsTimeoutRef.current);
+                    imageToolsTimeoutRef.current = null;
+                }
+
+                if (hoverImageTools) {
+                    const isNewImg = (hoverImageTools as any)._targetImg !== activeImg;
+                    const isNotShown = hoverImageTools.style.display !== "flex";
+
+                    if (isOverImg || isNewImg || isNotShown) {
+                        const rect = activeImg.getBoundingClientRect();
+                        const scrollX = win.scrollX;
+                        const scrollY = win.scrollY;
+                        const panelWidth = 150;
+                        const panelHeight = 32;
+                        const iframeWidth = doc.documentElement.clientWidth || doc.body.clientWidth;
+
+                        // Centered horizontally relative to the image, clamped to viewport bounds
+                        const left = rect.left + scrollX + (rect.width - panelWidth) / 2;
+                        const clampedLeft = Math.max(6, Math.min(iframeWidth - panelWidth - 6, left));
+
+                        // Position above the image, or below if there is no room at the top
+                        let top = rect.top + scrollY - panelHeight - 6;
+                        if (rect.top - panelHeight - 6 < 0) {
+                            top = rect.bottom + scrollY + 6;
+                        }
+
+                        hoverImageTools.style.left = `${clampedLeft}px`;
+                        hoverImageTools.style.top = `${top}px`;
                         hoverImageTools.style.display = "flex";
                         (hoverImageTools as any)._targetImg = activeImg;
                     }
                 }
             } else {
-                if (hoverImageTools) {
-                    hoverImageTools.style.display = "none";
+                if (hoverImageTools && hoverImageTools.style.display === "flex" && !imageToolsTimeoutRef.current) {
+                    imageToolsTimeoutRef.current = setTimeout(() => {
+                        hoverImageTools.style.display = "none";
+                        (hoverImageTools as any)._targetImg = null;
+                        imageToolsTimeoutRef.current = null;
+                    }, 400);
                 }
+            }
+        });
+
+        // Hide tools after delay when cursor leaves the document
+        doc.addEventListener("mouseleave", () => {
+            const hoverImageTools = doc.getElementById("ag-hover-image-tools");
+            if (hoverImageTools && hoverImageTools.style.display === "flex" && !imageToolsTimeoutRef.current) {
+                imageToolsTimeoutRef.current = setTimeout(() => {
+                    hoverImageTools.style.display = "none";
+                    (hoverImageTools as any)._targetImg = null;
+                    imageToolsTimeoutRef.current = null;
+                }, 300);
             }
         });
 

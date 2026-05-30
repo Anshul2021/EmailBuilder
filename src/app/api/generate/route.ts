@@ -37,9 +37,9 @@ function injectSectionMarkers(mjmlCode: string): string {
  * that is not placehold.co into a standard placehold.co placeholder image.
  */
 function sanitizeImageSources(mjmlCode: string): string {
-    // Regex matches src="URL" or src='URL' where URL starts with http/https but NOT placehold.co
+    // Regex matches src="URL" or src='URL' where URL starts with http/https but NOT placehold.co and NOT images.pexels.com
     // Capture the quote character in group 1, and the URL in group 2
-    return mjmlCode.replace(/src=(["'])(https?:\/\/(?!placehold\.co)[^"'\s>]+)\1/gi, (match, quote, url) => {
+    return mjmlCode.replace(/src=(["'])(https?:\/\/(?!placehold\.co|images\.pexels\.com)[^"'\s>]+)\1/gi, (match, quote, url) => {
         let width = "600";
         let height = "400";
         let text = "Image+Placeholder";
@@ -269,6 +269,9 @@ Return the complete updated MJML. Modify only what was requested, preserve every
         if (mjmlMatch) {
             mjmlCode = mjmlMatch[0];
         }
+
+        // Resolve Pexels images if there are any placeholders
+        mjmlCode = await resolvePexelsImages(mjmlCode);
 
         // Rewrite all external/unauthorized image URLs to placehold.co text placeholders
         mjmlCode = sanitizeImageSources(mjmlCode);

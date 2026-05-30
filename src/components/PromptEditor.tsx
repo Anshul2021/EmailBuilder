@@ -958,7 +958,7 @@ export function PromptEditor({
                                     key={qa.label}
                                     type="button"
                                     onClick={() => handleQuickAction(qa.prompt)}
-                                    className="text-[11px] font-medium text-slate-600 bg-white border border-slate-200/80 rounded-full px-3 py-1 hover:bg-purple-50 hover:text-purple-600 hover:border-purple-200 transition-all shrink-0 shadow-sm"
+                                    className="text-xs font-medium text-slate-600 bg-white border border-slate-200/80 rounded-lg px-3 py-1 hover:bg-purple-50 hover:text-purple-600 hover:border-purple-200 transition-all shrink-0 shadow-sm"
                                 >
                                     {qa.label.toLowerCase()}
                                 </button>

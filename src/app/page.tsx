@@ -5,7 +5,7 @@ import { PromptEditor } from "@/components/PromptEditor";
 import { LivePreview } from "@/components/LivePreview";
 import { useCredits } from "@/hooks/useCredits";
 import { track } from "@vercel/analytics";
-import { X, AlertCircle, Sparkles, Check, Bug, MessageSquare, Eye } from "lucide-react";
+import { X, AlertCircle, Sparkles, Check, Bug, MessageSquare, Eye, Monitor } from "lucide-react";
 import { SAMPLE_TEMPLATE } from "@/lib/sampleTemplate";
 import { motion } from "framer-motion";
 import { HistoryPanel } from "@/components/HistoryPanel";
@@ -710,6 +710,42 @@ export default function Home() {
 
   return (
     <div className="flex flex-col h-screen w-full overflow-hidden bg-[#f5f7fa]">
+      {/* Mobile Tab Switcher */}
+      {isMobile && (
+        <div className="bg-white border-b border-slate-200 h-12 flex shrink-0 z-[90] shadow-sm w-full">
+          <button
+            onClick={() => setActiveTab("editor")}
+            className={`flex-1 flex items-center justify-center text-xs font-bold transition-all border-r border-slate-100 uppercase tracking-wider ${
+              activeTab === "editor"
+                ? "text-violet-600 bg-violet-50/40 font-bold border-b-2 border-b-violet-600"
+                : "text-slate-500 hover:text-slate-800 bg-white"
+            }`}
+          >
+            Prompt Bar
+          </button>
+          <button
+            onClick={() => setActiveTab("preview")}
+            className={`flex-1 flex items-center justify-center text-xs font-bold transition-all uppercase tracking-wider ${
+              activeTab === "preview"
+                ? "text-violet-600 bg-violet-50/40 font-bold border-b-2 border-b-violet-600"
+                : "text-slate-500 hover:text-slate-800 bg-white"
+            }`}
+          >
+            Preview
+          </button>
+        </div>
+      )}
+
+      {/* Mobile Desktop Warning Banner */}
+      {isMobile && (
+        <div className="bg-amber-50 border-b border-amber-200 px-4 py-2 flex items-center justify-center gap-2 shrink-0">
+          <Monitor className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+          <span className="text-[11px] font-medium text-amber-800 text-center leading-normal">
+            For the best experience, please use a desktop device.
+          </span>
+        </div>
+      )}
+
       {/* Main Content Area */}
       <main className="flex flex-1 min-h-0 w-full relative flex-col md:flex-row">
       {/* Left Panel - Prompt Sidebar (collapsible) */}
@@ -854,49 +890,23 @@ export default function Home() {
       )}
 
       {/* Floating Action Button (FAB) for Bug Reporting */}
-      <Tooltip content="Report a bug" position={isMobile ? "right" : "left"}>
-        <button
-          onClick={() => setShowBugModal(true)}
-          className={`fixed z-[80] w-10 h-10 md:w-12 md:h-12 bg-rose-500 hover:bg-rose-600 text-white rounded-full flex items-center justify-center shadow-lg hover:shadow-xl transition-all duration-300 active:scale-95 group hover:rotate-6 border border-rose-400 ${
-            isMobile ? "left-6 bottom-20" : "right-6 bottom-6"
-          }`}
-          style={{ transitionTimingFunction: "cubic-bezier(0.34, 1.56, 0.64, 1)" }}
-        >
-          <Bug className="w-5 h-5 md:w-5.5 md:h-5.5 transition-transform duration-300 group-hover:scale-110" />
-        </button>
-      </Tooltip>
+      {!isMobile && (
+        <Tooltip content="Report a bug" position="left">
+          <button
+            onClick={() => setShowBugModal(true)}
+            className="fixed z-[80] w-12 h-12 bg-rose-500 hover:bg-rose-600 text-white rounded-full flex items-center justify-center shadow-lg hover:shadow-xl transition-all duration-300 active:scale-95 group hover:rotate-6 border border-rose-400 right-6 bottom-6"
+            style={{ transitionTimingFunction: "cubic-bezier(0.34, 1.56, 0.64, 1)" }}
+          >
+            <Bug className="w-5.5 h-5.5 transition-transform duration-300 group-hover:scale-110" />
+          </button>
+        </Tooltip>
+      )}
 
       {/* Bug Report Modal */}
       <BugReportModal
         isOpen={showBugModal}
         onClose={() => setShowBugModal(false)}
       />
-
-      {/* Mobile Tab Switcher */}
-      {isMobile && (
-        <div className="bg-white border-t border-slate-200 h-12 flex shrink-0 z-[90] shadow-md w-full">
-          <button
-            onClick={() => setActiveTab("editor")}
-            className={`flex-1 flex items-center justify-center text-xs font-bold transition-all border-r border-slate-100 uppercase tracking-wider ${
-              activeTab === "editor"
-                ? "text-violet-600 bg-violet-50/40 font-bold border-b-2 border-b-violet-600"
-                : "text-slate-500 hover:text-slate-800 bg-white"
-            }`}
-          >
-            Prompt Bar
-          </button>
-          <button
-            onClick={() => setActiveTab("preview")}
-            className={`flex-1 flex items-center justify-center text-xs font-bold transition-all uppercase tracking-wider ${
-              activeTab === "preview"
-                ? "text-violet-600 bg-violet-50/40 font-bold border-b-2 border-b-violet-600"
-                : "text-slate-500 hover:text-slate-800 bg-white"
-            }`}
-          >
-            Preview
-          </button>
-        </div>
-      )}
 
       {/* Onboarding Modal */}
       <OnboardingModal

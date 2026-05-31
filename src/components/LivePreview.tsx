@@ -5,7 +5,7 @@ import { Skeleton } from "primereact/skeleton";
 import { PreviewToolbar } from "./PreviewToolbar";
 import { clsx } from "clsx";
 import { motion, AnimatePresence } from "framer-motion";
-import { MailOpen, FileCode, X } from "lucide-react";
+import { MailOpen, FileCode, X, PencilLine } from "lucide-react";
 import { PropertiesPanel } from "./PropertiesPanel";
 import type { ElementProperties } from "./PropertiesPanel";
 import { SectionControls } from "./SectionControls";
@@ -176,12 +176,22 @@ export function LivePreview({
 
     useEffect(() => {
         const handleResize = () => {
-            setIsMobile(window.innerWidth < 768);
+            const mobile = window.innerWidth < 768;
+            setIsMobile(mobile);
+            if (mobile) {
+                setShowEditPanel(false);
+            }
         };
         handleResize();
         window.addEventListener("resize", handleResize);
         return () => window.removeEventListener("resize", handleResize);
     }, []);
+
+    useEffect(() => {
+        if (isLoading && isMobile) {
+            setShowEditPanel(false);
+        }
+    }, [isLoading, isMobile]);
 
     useEffect(() => {
         let interval: NodeJS.Timeout;
@@ -676,6 +686,14 @@ export function LivePreview({
                     background: #6d28d9;
                     transform: scale(1.1);
                     box-shadow: 0 6px 16px rgba(124,58,237,0.45), 0 2px 4px rgba(0,0,0,0.15);
+                }
+                .ag-drag-handle::after, .ag-edit-handle::after, .ag-delete-handle::after {
+                    content: '';
+                    position: absolute;
+                    top: -10px;
+                    left: -10px;
+                    right: -10px;
+                    bottom: -10px;
                 }
                 .ag-drop-indicator {
                     position: absolute;
@@ -1279,6 +1297,105 @@ export function LivePreview({
             }
         });
 
+        // ── Touch events for mobile block dragging ──
+        doc.addEventListener("touchstart", (e) => {
+            const target = e.target as HTMLElement;
+            const dragHandle = doc.getElementById("ag-drag-handle");
+
+            if ((target === dragHandle || dragHandle?.contains(target)) && selectedElementRef.current) {
+                // Prevent scrolling when dragging blocks on touch devices
+                e.preventDefault();
+                e.stopPropagation();
+
+                const touch = e.touches[0];
+                isBlockDraggingRef.current = true;
+                dragTargetRef.current = selectedElementRef.current;
+
+                const resizeHandle = doc.getElementById("ag-resize-handle");
+                const deleteHandle2 = doc.getElementById("ag-delete-handle");
+                const editHandle2 = doc.getElementById("ag-edit-handle");
+                if (dragHandle) dragHandle.style.display = "none";
+                if (resizeHandle) resizeHandle.style.display = "none";
+                if (deleteHandle2) deleteHandle2.style.display = "none";
+                if (editHandle2) editHandle2.style.display = "none";
+
+                const rect = selectedElementRef.current.getBoundingClientRect();
+                const ghost = selectedElementRef.current.cloneNode(true) as HTMLElement;
+                ghost.removeAttribute("contenteditable");
+                ghost.classList.add("ag-ghost");
+                ghost.style.width = `${rect.width}px`;
+                ghost.style.height = `${Math.min(rect.height, 120)}px`;
+                ghost.style.overflow = "hidden";
+                ghost.style.left = `${rect.left}px`;
+                ghost.style.top = `${rect.top}px`;
+
+                const offsetX = touch.clientX - rect.left;
+                const offsetY = touch.clientY - rect.top;
+                // Dim the original element
+                selectedElementRef.current.style.opacity = "0.25";
+                selectedElementRef.current.style.outline = "2px dashed #7c3aed";
+                selectedElementRef.current.style.outlineOffset = "2px";
+                // Append ghost to DOM so it is visible
+                doc.body.appendChild(ghost);
+                ghostElementRef.current = ghost;
+                (ghost as unknown as { _offsetX: number })._offsetX = offsetX;
+                (ghost as unknown as { _offsetY: number })._offsetY = offsetY;
+            }
+        }, { passive: false });
+
+        doc.addEventListener("touchmove", (e) => {
+            if (isBlockDraggingRef.current && ghostElementRef.current && dragTargetRef.current) {
+                e.preventDefault();
+                
+                const touch = e.touches[0];
+                const ghost = ghostElementRef.current;
+                const offsetX = (ghost as unknown as { _offsetX: number })._offsetX || 0;
+                const offsetY = (ghost as unknown as { _offsetY: number })._offsetY || 0;
+                ghost.style.left = `${touch.clientX - offsetX}px`;
+                ghost.style.top = `${touch.clientY - offsetY}px`;
+
+                ghost.style.display = "none";
+                const elUnderMouse = doc.elementFromPoint(touch.clientX, touch.clientY) as HTMLElement;
+                ghost.style.display = "";
+
+                const dropIndicator = doc.getElementById("ag-drop-indicator");
+                let dropTarget: HTMLElement | null = elUnderMouse;
+                while (dropTarget && dropTarget !== doc.body && dropTarget !== doc.documentElement) {
+                    if (EDITABLE_TAGS.includes(dropTarget.tagName) || dropTarget.tagName === "IMG") break;
+                    dropTarget = dropTarget.parentElement;
+                }
+
+                if (dropTarget && dropTarget !== dragTargetRef.current && dropTarget.tagName !== "BODY" && dropTarget.tagName !== "HTML") {
+                    const rect = dropTarget.getBoundingClientRect();
+                    const isTopHalf = touch.clientY < rect.top + rect.height / 2;
+                    dropPositionRef.current = isTopHalf ? "before" : "after";
+                    dropTargetRef.current = dropTarget;
+                    const scrollX = win.scrollX;
+                    const scrollY = win.scrollY;
+                    if (dropIndicator) {
+                        dropIndicator.style.width = `${rect.width}px`;
+                        dropIndicator.style.left = `${rect.left + scrollX}px`;
+                        dropIndicator.style.top = isTopHalf ? `${rect.top + scrollY - 2}px` : `${rect.bottom + scrollY - 2}px`;
+                        dropIndicator.style.display = "block";
+                    }
+                } else {
+                    dropTargetRef.current = null;
+                    if (dropIndicator) dropIndicator.style.display = "none";
+                }
+            }
+        }, { passive: false });
+
+        doc.addEventListener("touchend", () => {
+            if (isBlockDraggingRef.current) {
+                handleGlobalMouseUp();
+            }
+        });
+        doc.addEventListener("touchcancel", () => {
+            if (isBlockDraggingRef.current) {
+                handleGlobalMouseUp();
+            }
+        });
+
         // ── Preview click → select matching layer ──
         doc.addEventListener("click", (e) => {
             const target = e.target as HTMLElement;
@@ -1441,7 +1558,9 @@ export function LivePreview({
                     objectFit: cs.objectFit || "cover"
                 });
                 setHasSelection(true);
-                setShowEditPanel(true);
+                if (!isMobile) {
+                    setShowEditPanel(true);
+                }
                 setTimeout(updateResizeHandlePosition, 0);
                 return;
             }
@@ -1494,7 +1613,9 @@ export function LivePreview({
                     elementTag: target.tagName.toLowerCase(),
                 });
                 setHasSelection(true);
-                setShowEditPanel(true);
+                if (!isMobile) {
+                    setShowEditPanel(true);
+                }
                 updateResizeHandlePosition();
                 return;
             }
@@ -1620,8 +1741,12 @@ export function LivePreview({
 
     useEffect(() => {
         window.addEventListener("mouseup", handleGlobalMouseUp);
+        window.addEventListener("touchend", handleGlobalMouseUp);
+        window.addEventListener("touchcancel", handleGlobalMouseUp);
         return () => {
             window.removeEventListener("mouseup", handleGlobalMouseUp);
+            window.removeEventListener("touchend", handleGlobalMouseUp);
+            window.removeEventListener("touchcancel", handleGlobalMouseUp);
         };
     }, [handleGlobalMouseUp]);
 
@@ -1919,6 +2044,19 @@ export function LivePreview({
     return (
         <div className="flex flex-col h-full w-full bg-slate-100">
             <input ref={imageInputRef} type="file" accept="image/*" className="hidden" onChange={handleImageFileChange} />
+
+            {/* Floating edit pill for mobile */}
+            {isMobile && hasSelection && !showEditPanel && (
+                <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[100] animate-in fade-in slide-in-from-bottom-4 duration-300 pointer-events-auto">
+                    <button
+                        onClick={() => setShowEditPanel(true)}
+                        className="flex items-center gap-2 px-6 py-3 bg-violet-600 hover:bg-violet-700 text-white rounded-full shadow-2xl border border-violet-500 font-bold text-xs tracking-wider uppercase active:scale-95 transition-all"
+                    >
+                        <PencilLine className="w-4 h-4" />
+                        <span>Edit {selectedProps.isImage ? "Image" : "Text"} & Style</span>
+                    </button>
+                </div>
+            )}
 
             {/* ── Toolbar ── */}
             <PreviewToolbar

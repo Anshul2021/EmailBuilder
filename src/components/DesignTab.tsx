@@ -8,7 +8,7 @@ import { ElementProperties } from "./PropertiesPanel";
 import {
     AlignLeft, AlignCenter, AlignRight, AlignJustify,
     Underline, Strikethrough, Italic, Plus, X,
-    ImageIcon, Type, PencilLine, Search, Check
+    ImageIcon, Type, PencilLine, Search, Check, Paintbrush, Sparkles
 } from "lucide-react";
 import { motion } from "framer-motion";
 import { Tooltip } from "./UI/Tooltip";
@@ -42,8 +42,16 @@ export function DesignTab({
     const [activeShadowLayer, setActiveShadowLayer] = React.useState<number | null>(0);
     if (!hasSelection) {
         return (
-            <div className="flex-1 flex items-center justify-center p-6 text-center bg-white text-slate-500">
-                <p className="text-xs">Select an element to edit its design.</p>
+            <div className="flex-1 flex flex-col items-center justify-center p-6 text-center gap-3 bg-white">
+                <div className="w-12 h-12 rounded-xl bg-slate-100 flex items-center justify-center">
+                    <span className="text-xl">🎨</span>
+                </div>
+                <div>
+                    <p className="text-xs font-semibold text-slate-600 mb-1">No selection</p>
+                    <p className="text-xs text-slate-400 leading-relaxed max-w-[200px]">
+                        Click any element inside the live preview to edit its design
+                    </p>
+                </div>
             </div>
         );
     }
@@ -96,7 +104,7 @@ export function DesignTab({
 
             {/* Rich text section (for text elements) */}
             {!selectedProps.isImage && (
-                <Accordion title="Content" defaultExpanded={true}>
+                <Accordion title="Content" defaultExpanded={false}>
                     <div className="flex items-center justify-between mb-2">
                         <label className={labelClass} style={{ marginBottom: 0 }}>Rich text</label>
                         <Tooltip content="Edit directly in preview" position="bottom">

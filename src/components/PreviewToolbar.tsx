@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
-import { Monitor, Smartphone, MailOpen, PencilLine, Undo2, Redo2, RotateCcw, Check, Copy, History, Save, Download, Eye, Link, FileCode, Mail, ChevronDown } from "lucide-react";
+import { Monitor, Smartphone, MailOpen, PencilLine, Undo2, Redo2, RotateCcw, Check, Copy, Library, Save, Download, Eye, Link, FileCode, Mail, ChevronDown } from "lucide-react";
 import { clsx } from "clsx";
 import { Tooltip } from "./UI/Tooltip";
 import { motion, AnimatePresence } from "framer-motion";
@@ -27,6 +27,7 @@ interface PreviewToolbarProps {
     onAddText: () => void;
     isSharing?: boolean;
     onSimulateLoading?: () => void;
+    isLibraryHighlighted?: boolean;
 }
 
 export function PreviewToolbar({
@@ -49,7 +50,8 @@ export function PreviewToolbar({
     onExportHtml,
     onAddText,
     isSharing = false,
-    onSimulateLoading
+    onSimulateLoading,
+    isLibraryHighlighted = false
 }: PreviewToolbarProps) {
     const [showExportDropdown, setShowExportDropdown] = useState(false);
     const dropdownRef = useRef<HTMLDivElement>(null);
@@ -107,19 +109,6 @@ export function PreviewToolbar({
                     </button>
                 </Tooltip>
 
-                <Tooltip content="Simulate Loading Screen" position="bottom">
-                    <button
-                        onClick={onSimulateLoading}
-                        className="flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg text-slate-500 hover:bg-slate-100 border border-transparent transition-all"
-                    >
-                        <span className="relative flex h-2 w-2">
-                            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-violet-400 opacity-75"></span>
-                            <span className="relative inline-flex rounded-full h-2 w-2 bg-violet-500"></span>
-                        </span>
-                        Test Load
-                    </button>
-                </Tooltip>
-
                 <div className="w-px h-5 bg-slate-200" />
 
                 <div className="flex items-center gap-1">
@@ -153,17 +142,24 @@ export function PreviewToolbar({
                 </div>
                 <div className="w-px h-5 bg-slate-200" />
                 
-                <Tooltip content="View History" position="bottom">
-                    <button 
-                        onClick={onOpenHistory} 
-                        className="flex items-center gap-1.5 text-xs font-semibold bg-slate-100 text-slate-600 px-3 py-1.5 rounded-lg hover:bg-slate-200 transition-colors shadow-sm"
-                    >
-                        <History className="w-3.5 h-3.5" />
-                        History
-                    </button>
-                </Tooltip>
+                <div className="relative flex items-center">
+                    <Tooltip content="View Saved Templates" position="bottom">
+                        <button 
+                            onClick={onOpenHistory} 
+                            className={clsx(
+                                "flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg transition-all shadow-sm border",
+                                isLibraryHighlighted 
+                                    ? "library-highlight-active bg-violet-50 text-violet-700 border-violet-500" 
+                                    : "bg-slate-100 text-slate-600 hover:bg-slate-200 border-transparent"
+                            )}
+                        >
+                            <Library className="w-3.5 h-3.5" />
+                            Library
+                        </button>
+                    </Tooltip>
+                </div>
                 
-                <Tooltip content="Save to Supabase" position="bottom">
+                <Tooltip content="Save" position="bottom">
                     <button 
                         onClick={onSaveTemplate} 
                         disabled={!html} 

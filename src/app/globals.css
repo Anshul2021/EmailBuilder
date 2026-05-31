@@ -358,3 +358,20 @@
     transform: translateY(-5px);
   }
 }
+
+@keyframes tiltShake {
+  0%, 100% { transform: rotate(0deg) scale(1); }
+  15% { transform: rotate(-5deg) scale(1.08); }
+  30% { transform: rotate(5deg) scale(1.08); }
+  45% { transform: rotate(-4deg) scale(1.08); }
+  60% { transform: rotate(4deg) scale(1.08); }
+  75% { transform: rotate(-2deg) scale(1.03); }
+  90% { transform: rotate(2deg) scale(1.03); }
+}
+
+.library-highlight-active {
+  animation: tiltShake 0.7s ease-in-out infinite;
+  border-color: #7c3aed !important;
+  box-shadow: 0 0 15px rgba(124, 58, 237, 0.6) !important;
+  position: relative;
+}

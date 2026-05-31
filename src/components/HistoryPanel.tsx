@@ -1,8 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { X, Trash2, Edit2, Check, Clock } from "lucide-react";
-import { getTemplates, deleteTemplate, updateTemplate, TemplateRecord } from "@/lib/supabaseService";
+import { X, Edit2, Check, Library } from "lucide-react";
+import { getTemplates, updateTemplate, TemplateRecord } from "@/lib/supabaseService";
 import { supabase } from "@/lib/supabaseClient";
 
 interface HistoryPanelProps {
@@ -46,12 +46,7 @@ export function HistoryPanel({ onClose, onSelect }: HistoryPanelProps) {
     };
   }, []);
 
-  const handleDelete = async (e: React.MouseEvent, id: number) => {
-    e.stopPropagation();
-    if (window.confirm("Are you sure you want to delete this template?")) {
-      await deleteTemplate(id);
-    }
-  };
+
 
   const handleEditClick = (e: React.MouseEvent, t: TemplateRecord) => {
     e.stopPropagation();
@@ -59,10 +54,16 @@ export function HistoryPanel({ onClose, onSelect }: HistoryPanelProps) {
     setEditName(t.template_name || "");
   };
 
-  const handleSaveEdit = async (e: React.MouseEvent, t: TemplateRecord) => {
+  const handleSaveEdit = async (e: React.SyntheticEvent, t: TemplateRecord) => {
     e.stopPropagation();
-    if (editName.trim() && editName !== t.template_name) {
-      await updateTemplate(t.id, editName.trim(), t.mjml, t.html);
+    const trimmedName = editName.trim();
+    if (trimmedName && trimmedName !== t.template_name) {
+      try {
+        await updateTemplate(t.id, trimmedName, t.mjml, t.html);
+        setTemplates(prev => prev.map(item => item.id === t.id ? { ...item, template_name: trimmedName } : item));
+      } catch (err) {
+        console.error("Failed to rename template:", err);
+      }
     }
     setEditingId(null);
   };
@@ -75,8 +76,8 @@ export function HistoryPanel({ onClose, onSelect }: HistoryPanelProps) {
       >
         <div className="px-5 py-4 border-b border-slate-200 flex items-center justify-between bg-slate-50">
           <h2 className="text-lg font-semibold text-slate-800 flex items-center gap-2">
-            <Clock className="w-5 h-5 text-violet-500" />
-            Template History
+            <Library className="w-5 h-5 text-violet-500" />
+            Template Library
           </h2>
           <button onClick={onClose} className="p-1.5 rounded-md hover:bg-slate-200 text-slate-500 transition-colors">
             <X className="w-5 h-5" />
@@ -85,7 +86,14 @@ export function HistoryPanel({ onClose, onSelect }: HistoryPanelProps) {
 
         <div className="flex-1 overflow-y-auto p-4 space-y-3">
           {loading ? (
-            <div className="text-center text-slate-500 py-10 text-sm">Loading history...</div>
+            <div className="space-y-3">
+              {[...Array(5)].map((_, i) => (
+                <div key={i} className="border border-slate-100 rounded-xl p-4 bg-white space-y-3 animate-pulse">
+                  <div className="h-4 bg-slate-100 rounded-md w-2/3" />
+                  <div className="h-3 bg-slate-100 rounded-md w-1/3" />
+                </div>
+              ))}
+            </div>
           ) : templates.length === 0 ? (
             <div className="text-center text-slate-500 py-10 text-sm">No templates saved yet.</div>
           ) : (
@@ -105,7 +113,8 @@ export function HistoryPanel({ onClose, onSelect }: HistoryPanelProps) {
                           onChange={(e) => setEditName(e.target.value)}
                           className="flex-1 text-sm border border-violet-300 rounded px-2 py-1 outline-none focus:ring-2 focus:ring-violet-200"
                           autoFocus
-                          onKeyDown={(e) => e.key === 'Enter' && handleSaveEdit(e as unknown as React.MouseEvent, t)}
+                          onKeyDown={(e) => e.key === 'Enter' && handleSaveEdit(e, t)}
+                          onBlur={(e) => handleSaveEdit(e, t)}
                         />
                         <button onClick={(e) => handleSaveEdit(e, t)} className="p-1.5 bg-violet-100 text-violet-700 rounded hover:bg-violet-200">
                           <Check className="w-3.5 h-3.5" />
@@ -122,22 +131,17 @@ export function HistoryPanel({ onClose, onSelect }: HistoryPanelProps) {
                     </div>
                   </div>
                   
-                  <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity absolute top-3 right-3">
-                    <button 
-                      onClick={(e) => handleEditClick(e, t)}
-                      className="p-1.5 text-slate-400 hover:text-violet-600 hover:bg-violet-50 rounded-md transition-colors"
-                      title="Rename"
-                    >
-                      <Edit2 className="w-4 h-4" />
-                    </button>
-                    <button 
-                      onClick={(e) => handleDelete(e, t.id)}
-                      className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-md transition-colors"
-                      title="Delete"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                  </div>
+                  {editingId !== t.id && (
+                    <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity absolute top-3 right-3">
+                      <button 
+                        onClick={(e) => handleEditClick(e, t)}
+                        className="p-1.5 text-slate-400 hover:text-violet-600 hover:bg-violet-50 rounded-md transition-colors"
+                        title="Rename"
+                      >
+                        <Edit2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                  )}
                 </div>
               </div>
             ))

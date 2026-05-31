@@ -71,8 +71,25 @@ export default function PreviewPage() {
         );
     }
 
+    const handleIframeLoad = (e: React.SyntheticEvent<HTMLIFrameElement>) => {
+        const doc = e.currentTarget.contentDocument;
+        if (!doc) return;
+        const style = doc.createElement("style");
+        style.innerHTML = `
+            html::-webkit-scrollbar, body::-webkit-scrollbar, *::-webkit-scrollbar { 
+                display: none !important; width: 0 !important; height: 0 !important;
+            }
+            html, body, * {
+                scrollbar-width: none !important;
+                -ms-overflow-style: none !important;
+                scroll-behavior: smooth !important;
+            }
+        `;
+        doc.head.appendChild(style);
+    };
+
     return (
-        <div className="h-screen w-full flex flex-col overflow-hidden bg-slate-100">
+        <div className="h-screen w-full flex flex-col overflow-hidden bg-slate-100 scrollbar-hide">
             {/* Top Bar */}
             <header className="h-14 border-b border-slate-200 bg-white flex items-center justify-between px-6 shrink-0 shadow-sm z-10">
                 <div className="flex items-center gap-2.5">
@@ -117,22 +134,24 @@ export default function PreviewPage() {
             </header>
 
             {/* Viewport Frame */}
-            <main className="flex-1 p-6 flex justify-center items-center overflow-auto min-h-0">
+            <main className="flex-1 p-6 flex justify-center items-center overflow-hidden scrollbar-hide min-h-0">
                 <div
                     className={clsx(
-                        "h-full transition-all duration-300 ease-in-out flex justify-center items-center",
-                        viewMode === "desktop" ? "w-full" : "w-[375px]"
+                        "h-full transition-all duration-300 ease-in-out flex justify-center items-center scrollbar-hide",
+                        viewMode === "desktop" ? "w-full" : "w-[360px]"
                     )}
                 >
                     <div
                         className={clsx(
-                            "w-full h-full bg-white overflow-hidden shadow-md transition-all duration-300",
-                            viewMode === "mobile" && "border-[8px] border-slate-800 rounded-[32px] shadow-xl relative"
+                            "w-full h-full bg-white overflow-hidden transition-all duration-300 flex flex-col",
+                            viewMode === "mobile" 
+                                ? "w-[360px] max-h-[760px] aspect-[9/19.5] border-[12px] border-slate-900 rounded-[44px] shadow-2xl relative ring-1 ring-slate-900/10"
+                                : "shadow-md"
                         )}
                     >
                         {/* Mobile notch simulation */}
                         {viewMode === "mobile" && (
-                            <div className="absolute top-2.5 left-1/2 -translate-x-1/2 w-24 h-4 bg-slate-800 rounded-full z-20 flex items-center justify-center">
+                            <div className="absolute top-2.5 left-1/2 -translate-x-1/2 w-24 h-4 bg-slate-800 rounded-full z-20 flex items-center justify-center pointer-events-none">
                                 <div className="w-2.5 h-2.5 rounded-full bg-slate-900 border border-slate-700 mr-2" />
                                 <div className="w-1.5 h-1.5 rounded-full bg-slate-900 border border-slate-700" />
                             </div>
@@ -141,9 +160,10 @@ export default function PreviewPage() {
                         <iframe
                             srcDoc={template.html}
                             title="Shared Email Content"
+                            onLoad={handleIframeLoad}
                             className={clsx(
-                                "w-full h-full border-0 bg-white",
-                                viewMode === "mobile" && "pt-6"
+                                "w-full h-full border-0 bg-white scrollbar-hide",
+                                viewMode === "mobile" && "pt-6 rounded-[32px] overflow-hidden"
                             )}
                         />
                     </div>

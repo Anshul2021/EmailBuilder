@@ -51,6 +51,7 @@ interface LivePreviewProps {
     onLayerHover: (nodeId: string | null) => void;
     isSharing?: boolean;
     onLoadSample?: () => void;
+    isLibraryHighlighted?: boolean;
 }
 
 const GENERATING_MESSAGES = [
@@ -160,6 +161,7 @@ export function LivePreview({
     onLayerHover,
     isSharing = false,
     onLoadSample,
+    isLibraryHighlighted = false,
 }: LivePreviewProps) {
     const [viewMode, setViewMode] = useState<"desktop" | "mobile">("desktop");
     const [showEditPanel, setShowEditPanel] = useState(true);
@@ -1879,6 +1881,7 @@ export function LivePreview({
                 onAddText={handleAddText}
                 isSharing={isSharing}
                 onSimulateLoading={() => setSimulateLoading(true)}
+                isLibraryHighlighted={isLibraryHighlighted}
             />
 
             {/* ── Section Controls Overlay ── */}
@@ -1930,13 +1933,23 @@ export function LivePreview({
 
                     <div
                         className={clsx(
-                            "bg-white shadow-2xl rounded-xl overflow-hidden border border-slate-200 transition-all duration-500 ease-out scrollbar-hide relative",
-                            viewMode === "desktop" ? "w-full max-w-3xl min-h-[600px]" : "w-[390px] min-h-[700px]"
+                            "bg-white transition-all duration-500 ease-out scrollbar-hide relative flex flex-col",
+                            viewMode === "desktop"
+                                ? "w-full max-w-3xl min-h-[600px] shadow-2xl rounded-xl border border-slate-200 overflow-hidden"
+                                : "w-[360px] max-h-[760px] aspect-[9/19.5] border-[12px] border-slate-900 rounded-[44px] shadow-2xl ring-1 ring-slate-900/10"
                         )}
-                        style={{ height: "calc(100vh - 100px)", maxHeight: 800 }}
+                        style={viewMode === "desktop" ? { height: "calc(100vh - 100px)", maxHeight: 800 } : undefined}
                     >
+                        {/* Mobile camera notch simulation */}
+                        {viewMode === "mobile" && (
+                            <div className="absolute top-2.5 left-1/2 -translate-x-1/2 w-24 h-4 bg-slate-800 rounded-full z-20 flex items-center justify-center pointer-events-none">
+                                <div className="w-2.5 h-2.5 rounded-full bg-slate-900 border border-slate-700 mr-2" />
+                                <div className="w-1.5 h-1.5 rounded-full bg-slate-900 border border-slate-700" />
+                            </div>
+                        )}
+
                         {(isLoading || simulateLoading) && (
-                            <div className="absolute inset-0 z-40 flex flex-col items-center justify-center bg-white/95 backdrop-blur-[2px] animate-fade-in p-8 text-center gap-6 select-none">
+                            <div className="absolute inset-0 z-40 flex flex-col items-center justify-center bg-white/95 backdrop-blur-[2px] animate-fade-in p-8 text-center gap-6 select-none rounded-[32px] overflow-hidden">
                                 <div className="absolute -inset-10 bg-gradient-to-tr from-violet-500/5 via-fuchsia-500/5 to-cyan-500/5 blur-3xl opacity-70 pointer-events-none" />
                                 
                                 <div className="relative w-96 h-96 flex items-center justify-center">
@@ -1972,7 +1985,10 @@ export function LivePreview({
                                 title="Email Preview"
                                 srcDoc={html}
                                 onLoad={handleIframeLoad}
-                                className="w-full h-full border-0 bg-white scrollbar-hide"
+                                className={clsx(
+                                    "w-full h-full border-0 bg-white scrollbar-hide",
+                                    viewMode === "mobile" && "pt-6 rounded-[32px] overflow-hidden"
+                                )}
                                 sandbox="allow-same-origin allow-scripts"
                             />
                         ) : (
@@ -2020,7 +2036,7 @@ export function LivePreview({
                             {/* ── Collapse Toggle Button ── */}
                             <button
                                 onClick={() => setShowEditPanel(false)}
-                                className="absolute -left-4 top-1/2 z-[999] flex items-center justify-center w-8 h-8 rounded-full bg-white border border-slate-200 shadow-md text-slate-400 hover:text-slate-700 hover:border-slate-300 transition-all"
+                                className="absolute -left-4 top-1/2 z-30 flex items-center justify-center w-8 h-8 rounded-full bg-white border border-slate-200 shadow-md text-slate-400 hover:text-slate-700 hover:border-slate-300 transition-all"
                                 style={{ transform: "translateY(-50%)" }}
                                 title="Collapse panel"
                             >

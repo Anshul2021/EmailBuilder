@@ -75,6 +75,7 @@ interface PromptEditorProps {
     onModelChange: (model: string) => void;
     usage: { used: number; limit: number; remaining: number } | null;
     onResetUsage: () => void;
+    onRestart?: () => void;
 }
 
 const STARTER_PROMPTS = [
@@ -224,11 +225,9 @@ const FilePreviewCard: React.FC<{
     const isImage = file.type.startsWith("image/");
     const isTextual = isTextualFile(file.file);
 
-    if (isTextual) {
-        return <TextualFilePreviewCard file={file} onRemove={onRemove} />;
-    }
-
-    return (
+    return isTextual ? (
+        <TextualFilePreviewCard file={file} onRemove={onRemove} />
+    ) : (
         <div
             className={cn(
                 "relative group bg-slate-50 border border-slate-200 rounded-xl p-3 size-[115px] shadow-sm flex-shrink-0 overflow-hidden transition-all",
@@ -394,7 +393,8 @@ const ModelSelectorDropdown: React.FC<{
     onModelChange: (modelId: string) => void;
     hasTemplate: boolean;
     usage: { used: number; limit: number; remaining: number; modelCounts?: Record<string, { used: number; limit: number; remaining: number }> } | null;
-}> = ({ models, selectedModel, onModelChange, hasTemplate, usage }) => {
+    size?: 'sm' | 'md';
+}> = ({ models, selectedModel, onModelChange, hasTemplate, usage, size = 'sm' }) => {
     const [isOpen, setIsOpen] = useState(false);
     const selectedModelData = models.find((m) => m.value === selectedModel) || models[0];
     const dropdownRef = useRef<HTMLDivElement>(null);
@@ -413,7 +413,10 @@ const ModelSelectorDropdown: React.FC<{
         <div className="relative" ref={dropdownRef}>
             <button
                 type="button"
-                className="h-7 px-2 text-xs font-semibold text-slate-600 hover:text-slate-900 bg-slate-100 rounded-lg flex items-center gap-1 transition-colors"
+                className={cn(
+                    "text-xs font-semibold text-slate-600 hover:text-slate-900 bg-slate-100 rounded-lg flex items-center gap-1.5 transition-colors select-none",
+                    size === 'md' ? "h-9 px-3.5" : "h-7 px-2"
+                )}
                 onClick={() => setIsOpen(!isOpen)}
             >
                 <Zap className="w-3 h-3 text-violet-500 shrink-0" />
@@ -560,6 +563,7 @@ export function PromptEditor({
     onModelChange,
     usage,
     onResetUsage,
+    onRestart,
 }: PromptEditorProps) {
     const [prompt, setPrompt] = useState("");
     const [files, setFiles] = useState<FileWithPreview[]>([]);
@@ -577,7 +581,7 @@ export function PromptEditor({
     }, []);
 
     const processPastedText = useCallback((textData: string) => {
-        setPrompt("Generate this exact email template in a nice professional looking way, follow as it is, and use DM Sans font");
+        setPrompt("Generate this exact email template in a nice professional looking way, make sure nothing is missed everything should be exactly as it is, but for images only use text placeholders, and use DM Sans font");
         const pastedItem: PastedContent = {
             id: generateId(),
             content: textData,
@@ -615,7 +619,7 @@ export function PromptEditor({
         // Set default prompt if prompt is currently empty
         setPrompt((prev) => {
             if (!prev.trim()) {
-                return "Generate this exact email template in a nice professional looking way, follow as it is, and use DM Sans font";
+                return "Generate this exact email template in a nice professional looking way, make sure nothing is missed everything should be exactly as it is, but for images only use text placeholders, and use DM Sans font";
             }
             return prev;
         });
@@ -721,9 +725,17 @@ export function PromptEditor({
             if (fileToRemove?.preview && fileToRemove.preview.startsWith("blob:")) {
                 URL.revokeObjectURL(fileToRemove.preview);
             }
-            return prev.filter((f) => f.id !== id);
+            const updated = prev.filter((f) => f.id !== id);
+            if (updated.length === 0 && pastedContent.length === 0) {
+                setHasPasted(false);
+                setPrompt((p) => {
+                    const defaultPrompt = "Generate this exact email template in a nice professional looking way, make sure nothing is missed everything should be exactly as it is, but for images only use text placeholders, and use DM Sans font";
+                    return p.trim() === defaultPrompt.trim() ? "" : p;
+                });
+            }
+            return updated;
         });
-    }, []);
+    }, [pastedContent]);
 
     // Clipboard paste interceptor
     const handlePaste = useCallback((e: React.ClipboardEvent<HTMLTextAreaElement>) => {
@@ -738,15 +750,8 @@ export function PromptEditor({
             pastedFiles.forEach((file) => dataTransfer.items.add(file));
             handleFileSelect(dataTransfer.files);
             setHasPasted(true);
-            return;
         }
-
-        const textData = clipboardData.getData("text");
-        if (textData) {
-            e.preventDefault();
-            processPastedText(textData);
-        }
-    }, [handleFileSelect, files.length, processPastedText]);
+    }, [handleFileSelect, files.length]);
 
     useEffect(() => {
         const handleGlobalPaste = (e: ClipboardEvent) => {
@@ -772,31 +777,14 @@ export function PromptEditor({
                 pastedFiles.forEach((file) => dataTransfer.items.add(file));
                 handleFileSelect(dataTransfer.files);
                 setHasPasted(true);
-                return;
-            }
-
-            const textData = clipboardData.getData("text");
-            if (textData) {
-                e.preventDefault();
-                processPastedText(textData);
-            }
-        };
-
-        const handleIframePaste = (e: Event) => {
-            const customEvent = e as CustomEvent;
-            const textData = customEvent.detail?.text;
-            if (textData) {
-                processPastedText(textData);
             }
         };
 
         window.addEventListener("paste", handleGlobalPaste);
-        window.addEventListener("iframe-paste", handleIframePaste);
         return () => {
             window.removeEventListener("paste", handleGlobalPaste);
-            window.removeEventListener("iframe-paste", handleIframePaste);
         };
-    }, [processPastedText, handleFileSelect, files.length]);
+    }, [handleFileSelect, files.length]);
 
     // Drag-and-drop callbacks
     const handleDragOver = useCallback((e: React.DragEvent) => {
@@ -1035,6 +1023,21 @@ export function PromptEditor({
                         </div>
                     )}
 
+                    {/* Start from Scratch Option */}
+                    {hasTemplate && onRestart && (
+                        <div className="flex justify-end pt-1">
+                            <button
+                                type="button"
+                                onClick={onRestart}
+                                className="text-xs font-bold text-violet-600 hover:text-white border border-violet-200 hover:border-violet-600 hover:bg-violet-600 px-3 py-1.5 rounded-lg transition-all flex items-center gap-1.5 shadow-sm"
+                                title="Reset workspace and start from scratch"
+                            >
+                                <RotateCcw className="w-3.5 h-3.5" />
+                                Start from scratch
+                            </button>
+                        </div>
+                    )}
+
                     {/* Intercept-based File Upload + Chat Box */}
                     <motion.div
                         layout
@@ -1075,9 +1078,15 @@ export function PromptEditor({
                                                     <PastedContentCard
                                                         key={content.id}
                                                         content={content}
-                                                        onRemove={(id) =>
-                                                            setPastedContent((prev) => prev.filter((c) => c.id !== id))
-                                                        }
+                                                        onRemove={(id) => {
+                                                            setPastedContent((prev) => {
+                                                                const updated = prev.filter((c) => c.id !== id);
+                                                                if (updated.length === 0 && files.length === 0) {
+                                                                    setHasPasted(false);
+                                                                }
+                                                                return updated;
+                                                            });
+                                                        }}
                                                     />
                                                 ))}
                                                 {files.map((file) => (
@@ -1092,47 +1101,35 @@ export function PromptEditor({
                                         </div>
                                     )}
 
-                                    <div className="flex gap-2 items-center w-full">
-                                        <button
-                                            type="button"
-                                            onClick={handleSend}
-                                            disabled={isLoading}
-                                            className="flex-1 h-11 bg-violet-600 hover:bg-violet-700 active:scale-[0.99] text-white font-semibold rounded-xl shadow-sm hover:shadow transition-all flex items-center justify-center gap-2 group text-sm relative overflow-hidden disabled:opacity-75 disabled:cursor-not-allowed"
-                                        >
-                                            {isLoading ? (
-                                                <>
-                                                    <Loader2 className="h-4 w-4 animate-spin" />
-                                                    <span>Generating template...</span>
-                                                </>
-                                            ) : (
-                                                <>
-                                                    <span>Generate Template</span>
-                                                    <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
-                                                </>
-                                            )}
-                                        </button>
+                                     <div className="flex gap-2 items-center w-full">
+                                         <button
+                                             type="button"
+                                             onClick={handleSend}
+                                             disabled={isLoading}
+                                             className="flex-1 h-9 bg-violet-600 hover:bg-violet-700 active:scale-[0.99] text-white font-semibold rounded-lg shadow-sm hover:shadow transition-all flex items-center justify-center gap-1.5 group text-xs relative overflow-hidden disabled:opacity-75 disabled:cursor-not-allowed"
+                                         >
+                                             {isLoading ? (
+                                                 <>
+                                                     <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                                     <span>Generating...</span>
+                                                 </>
+                                             ) : (
+                                                 <>
+                                                     <span>Generate Template</span>
+                                                     <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-0.5 transition-transform" />
+                                                 </>
+                                             )}
+                                         </button>
 
-                                        <button
-                                            type="button"
-                                            onClick={handleCancelPaste}
-                                            disabled={isLoading}
-                                            className="w-11 h-11 bg-slate-50 hover:bg-slate-100 text-slate-500 hover:text-slate-700 rounded-xl transition-all flex items-center justify-center shrink-0 border border-slate-200/50 hover:scale-[1.02] active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed"
-                                            title="Clear pasted content"
-                                        >
-                                            <X className="w-4 h-4" />
-                                        </button>
-                                    </div>
-
-                                    {/* Model switching option on the right most corner */}
-                                    <div className="flex justify-end w-full px-1">
-                                        <ModelSelectorDropdown
-                                            models={GEMINI_MODELS}
-                                            selectedModel={selectedModel}
-                                            onModelChange={onModelChange}
-                                            hasTemplate={hasTemplate}
-                                            usage={usage}
-                                        />
-                                    </div>
+                                         <ModelSelectorDropdown
+                                             models={GEMINI_MODELS}
+                                             selectedModel={selectedModel}
+                                             onModelChange={onModelChange}
+                                             hasTemplate={hasTemplate}
+                                             usage={usage}
+                                             size="md"
+                                         />
+                                     </div>
                                 </motion.div>
                             ) : (
                                 <motion.div
@@ -1162,9 +1159,21 @@ export function PromptEditor({
                                                             <PastedContentCard
                                                                 key={content.id}
                                                                 content={content}
-                                                                onRemove={(id) =>
-                                                                    setPastedContent((prev) => prev.filter((c) => c.id !== id))
-                                                                }
+                                                                onRemove={(id) => {
+                                                                    setPastedContent((prev) => {
+                                                                        const updated = prev.filter((c) => c.id !== id);
+                                                                        if (updated.length === 0 && files.length === 0) {
+                                                                            setHasPasted(false);
+                                                                            setPrompt((p) => {
+                                                                                const defaultPrompt1 = "Generate this exact email template in a nice professional looking way, make sure nothing is missed everything should be exactly as it is, but for images only use text placeholders, and use DM Sans font";
+                                                                                const defaultPrompt2 = "Generate this exact email template in a nice professional looking way, make sure nothing is missed everything should be exactly as it is, but for images only use text placeholders, and use DM Sans font";
+                                                                                const trimmed = p.trim();
+                                                                                return (trimmed === defaultPrompt1.trim() || trimmed === defaultPrompt2.trim()) ? "" : p;
+                                                                            });
+                                                                        }
+                                                                        return updated;
+                                                                    });
+                                                                }}
                                                             />
                                                         ))}
                                                         {files.map((file) => (

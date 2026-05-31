@@ -18,6 +18,23 @@ export function PreviewModal({ isOpen, onClose, html, title = "Email Preview" }:
 
     if (!isOpen) return null;
 
+    const handleIframeLoad = (e: React.SyntheticEvent<HTMLIFrameElement>) => {
+        const doc = e.currentTarget.contentDocument;
+        if (!doc) return;
+        const style = doc.createElement("style");
+        style.innerHTML = `
+            html::-webkit-scrollbar, body::-webkit-scrollbar, *::-webkit-scrollbar { 
+                display: none !important; width: 0 !important; height: 0 !important;
+            }
+            html, body, * {
+                scrollbar-width: none !important;
+                -ms-overflow-style: none !important;
+                scroll-behavior: smooth !important;
+            }
+        `;
+        doc.head.appendChild(style);
+    };
+
     return (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
             <motion.div
@@ -64,22 +81,24 @@ export function PreviewModal({ isOpen, onClose, html, title = "Email Preview" }:
                 </div>
 
                 {/* Content Frame */}
-                <div className="flex-1 bg-slate-100 p-6 flex justify-center items-center overflow-auto min-h-0">
+                <div className="flex-1 bg-slate-100 p-6 flex justify-center items-center overflow-hidden scrollbar-hide min-h-0">
                     <div
                         className={clsx(
-                            "h-full transition-all duration-300 ease-in-out flex justify-center items-center",
-                            viewMode === "desktop" ? "w-full" : "w-[375px]"
+                            "h-full transition-all duration-300 ease-in-out flex justify-center items-center scrollbar-hide",
+                            viewMode === "desktop" ? "w-full" : "w-[360px]"
                         )}
                     >
                         <div
                             className={clsx(
-                                "w-full h-full bg-white overflow-hidden shadow-md transition-all duration-300",
-                                viewMode === "mobile" && "border-[8px] border-slate-800 rounded-[32px] shadow-xl relative"
+                                "w-full h-full bg-white overflow-hidden transition-all duration-300 flex flex-col",
+                                viewMode === "mobile" 
+                                    ? "w-[360px] max-h-[760px] aspect-[9/19.5] border-[12px] border-slate-900 rounded-[44px] shadow-2xl relative ring-1 ring-slate-900/10"
+                                    : "shadow-md"
                             )}
                         >
                             {/* Mobile camera notch simulation */}
                             {viewMode === "mobile" && (
-                                <div className="absolute top-2.5 left-1/2 -translate-x-1/2 w-24 h-4 bg-slate-800 rounded-full z-20 flex items-center justify-center">
+                                <div className="absolute top-2.5 left-1/2 -translate-x-1/2 w-24 h-4 bg-slate-800 rounded-full z-20 flex items-center justify-center pointer-events-none">
                                     <div className="w-2.5 h-2.5 rounded-full bg-slate-900 border border-slate-700 mr-2" />
                                     <div className="w-1.5 h-1.5 rounded-full bg-slate-900 border border-slate-700" />
                                 </div>
@@ -88,9 +107,10 @@ export function PreviewModal({ isOpen, onClose, html, title = "Email Preview" }:
                             <iframe
                                 srcDoc={html}
                                 title="Clean Email Preview"
+                                onLoad={handleIframeLoad}
                                 className={clsx(
-                                    "w-full h-full border-0 bg-white",
-                                    viewMode === "mobile" && "pt-6"
+                                    "w-full h-full border-0 bg-white scrollbar-hide",
+                                    viewMode === "mobile" && "pt-6 rounded-[32px] overflow-hidden"
                                 )}
                             />
                         </div>

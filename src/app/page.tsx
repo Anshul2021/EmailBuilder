@@ -10,6 +10,7 @@ import { SAMPLE_TEMPLATE } from "@/lib/sampleTemplate";
 import { motion } from "framer-motion";
 import { HistoryPanel } from "@/components/HistoryPanel";
 import { PreviewModal } from "@/components/PreviewModal";
+import { SaveTemplateModal } from "@/components/SaveTemplateModal";
 import { saveTemplate, TemplateRecord } from "@/lib/supabaseService";
 import { getSection, replaceMjmlSection } from "@/lib/mjmlParser";
 import {
@@ -43,6 +44,62 @@ export default function Home() {
   const [isSharing, setIsSharing] = useState(false);
   const { credits, totalCredits, percentage, deductCredits } = useCredits();
   const [usage, setUsage] = useState<{ used: number; limit: number; remaining: number } | null>(null);
+  const [showSaveModal, setShowSaveModal] = useState(false);
+  const [isLibraryHighlighted, setIsLibraryHighlighted] = useState(false);
+
+  // Restore editor state from sessionStorage on initial load
+  useEffect(() => {
+    try {
+      const cachedMjml = sessionStorage.getItem("ai_email_builder_mjml");
+      const cachedHtml = sessionStorage.getItem("ai_email_builder_html");
+      const cachedMessages = sessionStorage.getItem("ai_email_builder_messages");
+      
+      if (cachedMjml) setMjml(cachedMjml);
+      if (cachedHtml) setHtmlContent(cachedHtml);
+      if (cachedMessages) {
+        setMessages(JSON.parse(cachedMessages));
+      }
+    } catch (e) {
+      console.warn("Failed to load cached template state:", e);
+    }
+  }, []);
+
+  // Update sessionStorage cache when template changes
+  useEffect(() => {
+    try {
+      if (mjml) {
+        sessionStorage.setItem("ai_email_builder_mjml", mjml);
+      } else {
+        sessionStorage.removeItem("ai_email_builder_mjml");
+      }
+    } catch (e) {
+      console.warn(e);
+    }
+  }, [mjml]);
+
+  useEffect(() => {
+    try {
+      if (htmlContent) {
+        sessionStorage.setItem("ai_email_builder_html", htmlContent);
+      } else {
+        sessionStorage.removeItem("ai_email_builder_html");
+      }
+    } catch (e) {
+      console.warn(e);
+    }
+  }, [htmlContent]);
+
+  useEffect(() => {
+    try {
+      if (messages && messages.length > 0) {
+        sessionStorage.setItem("ai_email_builder_messages", JSON.stringify(messages));
+      } else {
+        sessionStorage.removeItem("ai_email_builder_messages");
+      }
+    } catch (e) {
+      console.warn(e);
+    }
+  }, [messages]);
 
   // Fetch initial usage count on mount
   useEffect(() => {
@@ -187,7 +244,7 @@ export default function Home() {
       setMessages(prev => {
         const newMsgs = [
           { role: "user", parts: [{ text: userMessageText }], isImage: !!imageBase64, text: userMessageText } as unknown as Message,
-          { role: "model", text: data.mjml } as Message,
+          { role: "model", parts: [{ text: data.mjml }], text: data.mjml } as unknown as Message,
         ];
         return isFresh ? newMsgs : [...prev, ...newMsgs];
       });
@@ -269,8 +326,8 @@ export default function Home() {
 
       setMessages(prev => [
         ...prev,
-        { role: "user", text: `[Section ${sectionIndex + 1}] ${instruction}` } as Message,
-        { role: "model", text: `Section ${sectionIndex + 1} updated.` } as Message,
+        { role: "user", parts: [{ text: `[Section ${sectionIndex + 1}] ${instruction}` }], text: `[Section ${sectionIndex + 1}] ${instruction}` } as unknown as Message,
+        { role: "model", parts: [{ text: `Section ${sectionIndex + 1} updated.` }], text: `Section ${sectionIndex + 1} updated.` } as unknown as Message,
       ]);
 
       deductCredits(Math.floor(data.sectionMjml.length / 5));
@@ -387,9 +444,26 @@ export default function Home() {
   const handleLoadSample = () => {
     editedHtmlRef.current = "";
     setHtmlContent(SAMPLE_TEMPLATE.html);
-    setMjml(SAMPLE_TEMPLATE.mjml);
+    setMjml((SAMPLE_TEMPLATE as any).mjml || "");
     setMessages([{ role: "model", text: "Here is your sample template. Try selecting text in the live preview to edit inline properties and text!" } as Message]);
     setErrorMsg(null);
+  };
+
+  const handleRestart = () => {
+    editedHtmlRef.current = "";
+    setHtmlContent("");
+    setMjml("");
+    setMessages([]);
+    setErrorMsg(null);
+    setInfoMsg(null);
+    setSuccessMsg(null);
+    try {
+      sessionStorage.removeItem("ai_email_builder_mjml");
+      sessionStorage.removeItem("ai_email_builder_html");
+      sessionStorage.removeItem("ai_email_builder_messages");
+    } catch (e) {
+      console.warn(e);
+    }
   };
 
   const handleMjmlChange = useCallback((_newMjml: string, newHtml: string) => {
@@ -451,15 +525,12 @@ export default function Home() {
     }
   };
 
-  const handleSaveToSupabase = async () => {
+  const handleSaveToSupabase = async (title: string) => {
     const content = editedHtmlRef.current || htmlContent;
     if (!content || !mjml) {
       alert("No template to save. Generate one first!");
       return;
     }
-
-    const title = prompt("Enter a name for this template:", "New Template");
-    if (title === null) return;
 
     track("Export Clicked", { type: "Supabase" });
     setLoadingType("saving");
@@ -467,7 +538,13 @@ export default function Home() {
     try {
       const cleanedContent = cleanHtmlForExport(content);
       await saveTemplate(title, mjml, cleanedContent);
-      alert("Template saved successfully!");
+      setShowSaveModal(false);
+      
+      // Highlight the library button for 3 seconds
+      setIsLibraryHighlighted(true);
+      setTimeout(() => {
+        setIsLibraryHighlighted(false);
+      }, 3000);
     } catch (err: unknown) {
       console.error(err);
       const errorMessage = err instanceof Error ? err.message : "Ensure Database is configured and RLS policies allow inserts.";
@@ -616,6 +693,7 @@ export default function Home() {
           onModelChange={setSelectedModel}
           usage={usage}
           onResetUsage={handleResetUsage}
+          onRestart={handleRestart}
         />
       </motion.div>
 
@@ -659,7 +737,7 @@ export default function Home() {
           onMjmlChange={handleMjmlChange}
           onCopyMjml={handleCopyMjml}
           onExportHtml={handleExportHtml}
-          onSaveTemplate={handleSaveToSupabase}
+          onSaveTemplate={() => setShowSaveModal(true)}
           onPreview={() => setShowPreviewModal(true)}
           onSharePreview={handleSharePreview}
           onDownloadHtml={handleExportHtml}
@@ -686,6 +764,7 @@ export default function Home() {
           onLayerAiEdit={handleLayerAiEdit}
           hoveredLayerNodeId={hoveredLayerNodeId}
           isSharing={isSharing}
+          isLibraryHighlighted={isLibraryHighlighted}
         />
       </div>
       </main>
@@ -708,6 +787,15 @@ export default function Home() {
             const match = typeof mjml === "string" ? mjml.match(/<mj-title>([^<]+)<\/mj-title>/i) : null;
             return match ? match[1].trim() : "Email Preview";
           })()}
+        />
+      )}
+      {/* Save Template Modal */}
+      {showSaveModal && (
+        <SaveTemplateModal
+          isOpen={showSaveModal}
+          onClose={() => setShowSaveModal(false)}
+          onSave={handleSaveToSupabase}
+          isLoading={loading && loadingType === "saving"}
         />
       )}
     </div>

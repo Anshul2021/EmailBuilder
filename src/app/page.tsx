@@ -5,12 +5,15 @@ import { PromptEditor } from "@/components/PromptEditor";
 import { LivePreview } from "@/components/LivePreview";
 import { useCredits } from "@/hooks/useCredits";
 import { track } from "@vercel/analytics";
-import { X, AlertCircle, Sparkles, Check } from "lucide-react";
+import { X, AlertCircle, Sparkles, Check, Bug, MessageSquare, Eye } from "lucide-react";
 import { SAMPLE_TEMPLATE } from "@/lib/sampleTemplate";
 import { motion } from "framer-motion";
 import { HistoryPanel } from "@/components/HistoryPanel";
 import { PreviewModal } from "@/components/PreviewModal";
 import { SaveTemplateModal } from "@/components/SaveTemplateModal";
+import { BugReportModal } from "@/components/BugReportModal";
+import { OnboardingModal } from "@/components/OnboardingModal";
+import { Tooltip } from "@/components/UI/Tooltip";
 import { saveTemplate, TemplateRecord } from "@/lib/supabaseService";
 import { getSection, replaceMjmlSection } from "@/lib/mjmlParser";
 import {
@@ -46,10 +49,32 @@ export default function Home() {
   const [usage, setUsage] = useState<{ used: number; limit: number; remaining: number } | null>(null);
   const [showSaveModal, setShowSaveModal] = useState(false);
   const [isLibraryHighlighted, setIsLibraryHighlighted] = useState(false);
+  const [showBugModal, setShowBugModal] = useState(false);
+  const [showOnboarding, setShowOnboarding] = useState(false);
+  const [isMobile, setIsMobile] = useState(false);
+  const [activeTab, setActiveTab] = useState<"editor" | "preview">("editor");
+
+  useEffect(() => {
+    const handleResize = () => {
+      setIsMobile(window.innerWidth < 768);
+    };
+    handleResize();
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, []);
 
   // Restore editor state from sessionStorage on initial load
   useEffect(() => {
     try {
+      const isSample = sessionStorage.getItem("ai_email_builder_is_sample");
+      if (isSample === "true") {
+        sessionStorage.removeItem("ai_email_builder_mjml");
+        sessionStorage.removeItem("ai_email_builder_html");
+        sessionStorage.removeItem("ai_email_builder_messages");
+        sessionStorage.removeItem("ai_email_builder_is_sample");
+        return;
+      }
+
       const cachedMjml = sessionStorage.getItem("ai_email_builder_mjml");
       const cachedHtml = sessionStorage.getItem("ai_email_builder_html");
       const cachedMessages = sessionStorage.getItem("ai_email_builder_messages");
@@ -188,6 +213,10 @@ export default function Home() {
     model: string = "gemini-2.5-flash",
     isFresh: boolean = false
   ) => {
+    try {
+      sessionStorage.removeItem("ai_email_builder_is_sample");
+    } catch (e) {}
+
     track("Generate Email", { model });
     setLoadingType("generating");
     setLoading(true);
@@ -260,7 +289,11 @@ export default function Home() {
   };
 
   // ── Section-level AI editing (from preview controls) ──
-  const handleSectionEdit = useCallback(async (instruction: string, sectionIndex: number) => {
+  const handleSectionEdit = useCallback(async (instruction: string, sectionIndex: number, model: string = "gemini-3.1-flash-lite") => {
+    try {
+      sessionStorage.removeItem("ai_email_builder_is_sample");
+    } catch (e) {}
+
     const sectionMjml = getSection(mjml, sectionIndex);
     if (!sectionMjml) {
       setErrorMsg("Could not find that section. Try regenerating the template.");
@@ -282,7 +315,7 @@ export default function Home() {
       const resp = await fetch("/api/generate-section", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ sectionMjml, instruction, model: selectedModel }),
+        body: JSON.stringify({ sectionMjml, instruction, model }),
       });
 
       if (!resp.ok) {
@@ -302,17 +335,18 @@ export default function Home() {
       const data = await resp.json();
 
       // Check if a fallback model was used
-      if (data.modelUsed && data.modelUsed !== selectedModel) {
+      if (data.modelUsed && data.modelUsed !== model) {
         const modelLabels: Record<string, string> = {
           "gemini-3.5-flash": "Gemini 3.5 Flash",
+          "gemini-3.1-flash-lite": "Gemini 3.1 Flash Lite",
           "gemini-2.5-flash": "Gemini 2.5 Flash",
           "gemini-2.0-flash": "Gemini 2.0 Flash",
           "gemini-1.5-pro": "Gemini 1.5 Pro",
           "gemini-1.5-flash": "Gemini 1.5 Flash"
         };
-        const requestedLabel = modelLabels[selectedModel] || selectedModel;
+        const requestedLabel = modelLabels[model] || model;
         const usedLabel = modelLabels[data.modelUsed] || data.modelUsed;
-        const failReason = data.failedModels?.[selectedModel] ? ` (${data.failedModels[selectedModel]})` : "";
+        const failReason = data.failedModels?.[model] ? ` (${data.failedModels[model]})` : "";
         setInfoMsg(`"${requestedLabel}" was bypassed${failReason}. Automatically fell back to "${usedLabel}" for section edit.`);
       }
 
@@ -347,7 +381,7 @@ export default function Home() {
     } finally {
       setIsSectionEditing(false);
     }
-  }, [mjml, mjmlTree, deductCredits, selectedModel]);
+  }, [mjml, mjmlTree, deductCredits]);
 
   // ── Section structural operations (from preview) ──
   const handleSectionDuplicate = useCallback(async (sectionIndex: number) => {
@@ -447,6 +481,11 @@ export default function Home() {
     setMjml((SAMPLE_TEMPLATE as any).mjml || "");
     setMessages([{ role: "model", text: "Here is your sample template. Try selecting text in the live preview to edit inline properties and text!" } as Message]);
     setErrorMsg(null);
+    try {
+      sessionStorage.setItem("ai_email_builder_is_sample", "true");
+    } catch (e) {
+      console.warn(e);
+    }
   };
 
   const handleRestart = () => {
@@ -461,6 +500,7 @@ export default function Home() {
       sessionStorage.removeItem("ai_email_builder_mjml");
       sessionStorage.removeItem("ai_email_builder_html");
       sessionStorage.removeItem("ai_email_builder_messages");
+      sessionStorage.removeItem("ai_email_builder_is_sample");
     } catch (e) {
       console.warn(e);
     }
@@ -671,64 +711,76 @@ export default function Home() {
   return (
     <div className="flex flex-col h-screen w-full overflow-hidden bg-[#f5f7fa]">
       {/* Main Content Area */}
-      <main className="flex flex-1 min-h-0 w-full relative">
+      <main className="flex flex-1 min-h-0 w-full relative flex-col md:flex-row">
       {/* Left Panel - Prompt Sidebar (collapsible) */}
-      <motion.div
-        initial={false}
-        animate={{
-          width: isPromptCollapsed ? 0 : "clamp(320px, 30vw, 380px)",
-          minWidth: isPromptCollapsed ? 0 : "320px",
-        }}
-        transition={{ duration: 0.28, ease: [0.4, 0, 0.2, 1] }}
-        className="relative shrink-0 h-full shadow-panel overflow-visible"
-      >
-        <PromptEditor
-          onGenerate={handleGenerate}
-          isLoading={loading}
-          hasTemplate={!!mjml}
-          messages={messages}
-          isCollapsed={isPromptCollapsed}
-          onToggleCollapse={() => setIsPromptCollapsed(v => !v)}
-          selectedModel={selectedModel}
-          onModelChange={setSelectedModel}
-          usage={usage}
-          onResetUsage={handleResetUsage}
-          onRestart={handleRestart}
-        />
-      </motion.div>
+      {(!isMobile || activeTab === "editor") && (
+        <motion.div
+          initial={false}
+          animate={{
+            width: isMobile ? "100%" : isPromptCollapsed ? 0 : "clamp(320px, 30vw, 380px)",
+            minWidth: isMobile ? "100%" : isPromptCollapsed ? 0 : "320px",
+          }}
+          transition={{ duration: 0.28, ease: [0.4, 0, 0.2, 1] }}
+          className={`relative shrink-0 h-full shadow-panel overflow-visible ${isMobile ? "flex-1 w-full" : ""}`}
+        >
+          <PromptEditor
+            onGenerate={(p, img, mime, model, isFresh) => {
+              handleGenerate(p, img, mime, model, isFresh);
+              if (isMobile) setActiveTab("preview");
+            }}
+            isLoading={loading}
+            hasTemplate={!!mjml}
+            messages={messages}
+            isCollapsed={isMobile ? false : isPromptCollapsed}
+            onToggleCollapse={() => setIsPromptCollapsed(v => !v)}
+            selectedModel={selectedModel}
+            onModelChange={setSelectedModel}
+            usage={usage}
+            onResetUsage={handleResetUsage}
+            onRestart={handleRestart}
+          />
+        </motion.div>
+      )}
 
       {/* Right Panel - Preview */}
-      <div className="flex-1 h-full min-w-0 relative">
-        {/* Error Banner */}
-        {errorMsg && (
-          <div className="absolute bottom-6 right-6 z-50 flex items-start gap-3 bg-red-50 border border-red-200 text-red-700 text-xs font-medium px-4 py-3 rounded-xl shadow-lg max-w-[540px] animate-slide-up">
-            <AlertCircle className="w-4 h-4 mt-0.5 shrink-0 text-red-500" />
-            <span className="flex-1 leading-relaxed">{errorMsg}</span>
-            <button onClick={() => setErrorMsg(null)} className="shrink-0 -mt-0.5 p-0.5 rounded hover:bg-red-100 transition-colors">
-              <X className="w-3.5 h-3.5" />
-            </button>
-          </div>
-        )}
-        {/* Info/Fallback Banner */}
-        {infoMsg && (
-          <div className="absolute bottom-6 right-6 z-50 flex items-start gap-3 bg-amber-50 border border-amber-200 text-amber-800 text-xs font-medium px-4 py-3 rounded-xl shadow-lg max-w-[540px] animate-slide-up">
-            <Sparkles className="w-4 h-4 mt-0.5 shrink-0 text-amber-500" />
-            <span className="flex-1 leading-relaxed">{infoMsg}</span>
-            <button onClick={() => setInfoMsg(null)} className="shrink-0 -mt-0.5 p-0.5 rounded hover:bg-amber-100 transition-colors">
-              <X className="w-3.5 h-3.5 text-amber-500" />
-            </button>
-          </div>
-        )}
-        {/* Success Banner */}
-        {successMsg && (
-          <div className="absolute bottom-6 right-6 z-50 flex items-start gap-3 bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-medium px-4 py-3 rounded-xl shadow-lg max-w-[540px] animate-slide-up">
-            <Check className="w-4 h-4 mt-0.5 shrink-0 text-emerald-500" />
-            <span className="flex-1 leading-relaxed">{successMsg}</span>
-            <button onClick={() => setSuccessMsg(null)} className="shrink-0 -mt-0.5 p-0.5 rounded hover:bg-emerald-100 transition-colors">
-              <X className="w-3.5 h-3.5 text-emerald-500" />
-            </button>
-          </div>
-        )}
+      {(!isMobile || activeTab === "preview") && (
+        <div className="flex-1 h-full min-w-0 relative">
+          {/* Error Banner */}
+          {errorMsg && (
+            <div className={`absolute right-6 z-50 flex items-start gap-3 bg-red-50 border border-red-200 text-red-700 text-xs font-medium px-4 py-3 rounded-xl shadow-lg max-w-[calc(100vw-3rem)] md:max-w-[540px] animate-slide-up ${
+              isMobile ? "bottom-32" : "bottom-20"
+            }`}>
+              <AlertCircle className="w-4 h-4 mt-0.5 shrink-0 text-red-500" />
+              <span className="flex-1 leading-relaxed">{errorMsg}</span>
+              <button onClick={() => setErrorMsg(null)} className="shrink-0 -mt-0.5 p-0.5 rounded hover:bg-red-100 transition-colors">
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          )}
+          {/* Info/Fallback Banner */}
+          {infoMsg && (
+            <div className={`absolute right-6 z-50 flex items-start gap-3 bg-amber-50 border border-amber-200 text-amber-800 text-xs font-medium px-4 py-3 rounded-xl shadow-lg max-w-[calc(100vw-3rem)] md:max-w-[540px] animate-slide-up ${
+              isMobile ? "bottom-32" : "bottom-20"
+            }`}>
+              <Sparkles className="w-4 h-4 mt-0.5 shrink-0 text-amber-500" />
+              <span className="flex-1 leading-relaxed">{infoMsg}</span>
+              <button onClick={() => setInfoMsg(null)} className="shrink-0 -mt-0.5 p-0.5 rounded hover:bg-amber-100 transition-colors">
+                <X className="w-3.5 h-3.5 text-amber-500" />
+              </button>
+            </div>
+          )}
+          {/* Success Banner */}
+          {successMsg && (
+            <div className={`absolute right-6 z-50 flex items-start gap-3 bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-medium px-4 py-3 rounded-xl shadow-lg max-w-[calc(100vw-3rem)] md:max-w-[540px] animate-slide-up ${
+              isMobile ? "bottom-32" : "bottom-20"
+            }`}>
+              <Check className="w-4 h-4 mt-0.5 shrink-0 text-emerald-500" />
+              <span className="flex-1 leading-relaxed">{successMsg}</span>
+              <button onClick={() => setSuccessMsg(null)} className="shrink-0 -mt-0.5 p-0.5 rounded hover:bg-emerald-100 transition-colors">
+                <X className="w-3.5 h-3.5 text-emerald-500" />
+              </button>
+            </div>
+          )}
         <LivePreview
           html={htmlContent}
           mjml={mjml}
@@ -765,8 +817,10 @@ export default function Home() {
           hoveredLayerNodeId={hoveredLayerNodeId}
           isSharing={isSharing}
           isLibraryHighlighted={isLibraryHighlighted}
+          onOpenTutorial={() => setShowOnboarding(true)}
         />
       </div>
+      )}
       </main>
 
       {/* History Panel Modal */}
@@ -798,6 +852,57 @@ export default function Home() {
           isLoading={loading && loadingType === "saving"}
         />
       )}
+
+      {/* Floating Action Button (FAB) for Bug Reporting */}
+      <Tooltip content="Report a bug" position={isMobile ? "right" : "left"}>
+        <button
+          onClick={() => setShowBugModal(true)}
+          className={`fixed z-[80] w-10 h-10 md:w-12 md:h-12 bg-rose-500 hover:bg-rose-600 text-white rounded-full flex items-center justify-center shadow-lg hover:shadow-xl transition-all duration-300 active:scale-95 group hover:rotate-6 border border-rose-400 ${
+            isMobile ? "left-6 bottom-20" : "right-6 bottom-6"
+          }`}
+          style={{ transitionTimingFunction: "cubic-bezier(0.34, 1.56, 0.64, 1)" }}
+        >
+          <Bug className="w-5 h-5 md:w-5.5 md:h-5.5 transition-transform duration-300 group-hover:scale-110" />
+        </button>
+      </Tooltip>
+
+      {/* Bug Report Modal */}
+      <BugReportModal
+        isOpen={showBugModal}
+        onClose={() => setShowBugModal(false)}
+      />
+
+      {/* Mobile Tab Switcher */}
+      {isMobile && (
+        <div className="bg-white border-t border-slate-200 h-12 flex shrink-0 z-[90] shadow-md w-full">
+          <button
+            onClick={() => setActiveTab("editor")}
+            className={`flex-1 flex items-center justify-center text-xs font-bold transition-all border-r border-slate-100 uppercase tracking-wider ${
+              activeTab === "editor"
+                ? "text-violet-600 bg-violet-50/40 font-bold border-b-2 border-b-violet-600"
+                : "text-slate-500 hover:text-slate-800 bg-white"
+            }`}
+          >
+            Prompt Bar
+          </button>
+          <button
+            onClick={() => setActiveTab("preview")}
+            className={`flex-1 flex items-center justify-center text-xs font-bold transition-all uppercase tracking-wider ${
+              activeTab === "preview"
+                ? "text-violet-600 bg-violet-50/40 font-bold border-b-2 border-b-violet-600"
+                : "text-slate-500 hover:text-slate-800 bg-white"
+            }`}
+          >
+            Preview
+          </button>
+        </div>
+      )}
+
+      {/* Onboarding Modal */}
+      <OnboardingModal
+        isOpen={showOnboarding}
+        onClose={() => setShowOnboarding(false)}
+      />
     </div>
   );
 }

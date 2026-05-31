@@ -270,8 +270,17 @@ Return the complete updated MJML. Modify only what was requested, preserve every
             mjmlCode = mjmlMatch[0];
         }
 
-        // Resolve Pexels images if there are any placeholders
-        mjmlCode = await resolvePexelsImages(mjmlCode);
+        // Resolve Pexels images if there are any placeholders, unless it's gemini-3.1-flash-lite which requires pure text placeholders
+        if (resolvedModel === "gemini-3.1-flash-lite") {
+            mjmlCode = mjmlCode.replace(/https:\/\/images\.pexels\.com\/placeholder\?query=([^"'\s>]+)/gi, (match, encodedQuery) => {
+                return `https://placehold.co/600x400?text=${encodedQuery}`;
+            });
+            mjmlCode = mjmlCode.replace(/src=(["'])(https?:\/\/images\.pexels\.com\/[^"'\s>]+)\1/gi, (match, quote, url) => {
+                return `src="https://placehold.co/600x400?text=Image"`;
+            });
+        } else {
+            mjmlCode = await resolvePexelsImages(mjmlCode);
+        }
 
         // Rewrite all external/unauthorized image URLs to placehold.co text placeholders
         mjmlCode = sanitizeImageSources(mjmlCode);

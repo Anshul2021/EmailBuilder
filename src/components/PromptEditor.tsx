@@ -429,12 +429,6 @@ const ModelSelectorDropdown: React.FC<{
                         isOpen && "rotate-180"
                     )}
                 />
-                {hasTemplate && (
-                    <span className="text-[9px] font-semibold text-emerald-500 flex items-center gap-0.5 ml-0.5">
-                        <div className="w-1 h-1 rounded-full bg-emerald-500" />
-                        Edit
-                    </span>
-                )}
             </button>
 
             {isOpen && (
@@ -572,6 +566,62 @@ export function PromptEditor({
     const [showFullHistory, setShowFullHistory] = useState(false);
     const [fullscreenImageUrl, setFullscreenImageUrl] = useState<string | null>(null);
     const [hasPasted, setHasPasted] = useState(false);
+
+    const limitReached = usage !== null && usage.remaining <= 0;
+    const [placeholder, setPlaceholder] = useState("");
+
+    useEffect(() => {
+        if (limitReached) {
+            setPlaceholder("Limit reached. Try again tomorrow.");
+            return;
+        }
+        if (hasTemplate) {
+            setPlaceholder("Describe changes to your email...");
+            return;
+        }
+
+        const phrases = [
+            "Describe your template Idea and we will build it...",
+            "Attach any email template and make it editable..."
+        ];
+
+        let phraseIdx = 0;
+        let charIdx = 0;
+        let isDeleting = false;
+        let timeoutId: NodeJS.Timeout;
+
+        const tick = () => {
+            const currentPhrase = phrases[phraseIdx];
+            if (!isDeleting) {
+                setPlaceholder(currentPhrase.substring(0, charIdx + 1));
+                charIdx++;
+
+                if (charIdx === currentPhrase.length) {
+                    isDeleting = true;
+                    timeoutId = setTimeout(tick, 1500);
+                    return;
+                }
+                timeoutId = setTimeout(tick, 25);
+            } else {
+                setPlaceholder(currentPhrase.substring(0, charIdx - 1));
+                charIdx--;
+
+                if (charIdx === 0) {
+                    isDeleting = false;
+                    phraseIdx = (phraseIdx + 1) % phrases.length;
+                    timeoutId = setTimeout(tick, 300);
+                    return;
+                }
+                timeoutId = setTimeout(tick, 10);
+            }
+        };
+
+        tick();
+
+        return () => {
+            clearTimeout(timeoutId);
+        };
+    }, [limitReached, hasTemplate]);
 
     const handleCancelPaste = useCallback(() => {
         setHasPasted(false);
@@ -857,7 +907,6 @@ export function PromptEditor({
         textareaRef.current?.focus();
     };
 
-    const limitReached = usage !== null && usage.remaining <= 0;
     const hasContent = prompt.trim() || files.length > 0 || pastedContent.length > 0;
     const canSend = hasContent && !isLoading && !limitReached && !files.some((f) => f.uploadStatus === "uploading");
 
@@ -882,7 +931,7 @@ export function PromptEditor({
                 style={{ minWidth: 0 }}
             >
                 {/* ── Header ── */}
-                <div className="flex items-center justify-between px-5 pt-8 pb-2 border-b border-slate-100 bg-slate-50 shrink-0">
+                <div className="flex items-center justify-between px-5 pt-6 pb-2 border-b border-slate-100 bg-slate-50 shrink-0">
                     <div className="flex items-center gap-2.5">
                         <div>
                             <h1 className="text-sm font-bold text-slate-900 leading-tight">AI Email Builder</h1>
@@ -1195,13 +1244,7 @@ export function PromptEditor({
                                                 onChange={(e) => setPrompt(e.target.value)}
                                                 onPaste={handlePaste}
                                                 onKeyDown={handleKeyDown}
-                                                placeholder={
-                                                    limitReached
-                                                        ? "Limit reached. Try again tomorrow."
-                                                        : hasTemplate
-                                                        ? "Describe changes to your email..."
-                                                        : "Describe the email you want to build..."
-                                                }
+                                                placeholder={placeholder}
                                                 disabled={isLoading || limitReached}
                                                 className="flex-1 min-h-[100px] w-full px-4 pt-3.5 pb-1 focus:outline-none border-none outline-none focus-within:ring-0 max-h-[140px] resize-none bg-transparent text-slate-800 placeholder:text-slate-400 text-sm leading-relaxed custom-scrollbar disabled:cursor-not-allowed disabled:text-slate-400"
                                                 rows={1}

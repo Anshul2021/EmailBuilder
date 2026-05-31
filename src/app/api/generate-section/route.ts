@@ -70,7 +70,7 @@ export async function POST(req: NextRequest) {
         // Validate the model against the allowed GEMINI_MODELS list
         let primaryModel = requestedModel;
         if (!primaryModel) {
-            primaryModel = "gemini-2.5-flash";
+            primaryModel = "gemini-3.1-flash-lite";
         } else if (!GEMINI_MODELS.some(m => m.value === primaryModel)) {
             return NextResponse.json(
                 { error: "Invalid model selected" },
@@ -125,7 +125,16 @@ export async function POST(req: NextRequest) {
                 }
 
                 // Resolve Pexels images if there are any placeholders
-                sectionCode = await resolvePexelsImages(sectionCode);
+                if (resolvedModel === "gemini-3.1-flash-lite") {
+                    sectionCode = sectionCode.replace(/https:\/\/images\.pexels\.com\/placeholder\?query=([^"'\s>]+)/gi, (match, encodedQuery) => {
+                        return `https://placehold.co/600x400?text=${encodedQuery}`;
+                    });
+                    sectionCode = sectionCode.replace(/src=(["'])(https?:\/\/images\.pexels\.com\/[^"'\s>]+)\1/gi, (match, quote, url) => {
+                        return `src="https://placehold.co/600x400?text=Image"`;
+                    });
+                } else {
+                    sectionCode = await resolvePexelsImages(sectionCode);
+                }
 
                 // Rewrite all external/unauthorized image URLs to placehold.co text placeholders
                 sectionCode = sanitizeImageSources(sectionCode);

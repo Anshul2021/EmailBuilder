@@ -82,3 +82,18 @@ export async function getTemplateById(id: number): Promise<TemplateRecord | null
   return data;
 }
 
+export async function reportBug(personName: string, description: string): Promise<any> {
+  const { data, error } = await supabase
+    .from("Bugs")
+    .insert([{ "Person Name": personName, "Description": description }])
+    .select()
+    .single();
+
+  if (error) {
+    console.error("Error reporting bug:", error);
+    throw new Error(error.message);
+  }
+
+  return data;
+}
+

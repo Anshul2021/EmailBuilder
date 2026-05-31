@@ -5,7 +5,7 @@ import { Skeleton } from "primereact/skeleton";
 import { PreviewToolbar } from "./PreviewToolbar";
 import { clsx } from "clsx";
 import { motion, AnimatePresence } from "framer-motion";
-import { MailOpen, FileCode } from "lucide-react";
+import { MailOpen, FileCode, X } from "lucide-react";
 import { PropertiesPanel } from "./PropertiesPanel";
 import type { ElementProperties } from "./PropertiesPanel";
 import { SectionControls } from "./SectionControls";
@@ -29,7 +29,7 @@ interface LivePreviewProps {
     onDownloadHtml: () => void;
     onDownloadEml: () => void;
     // Section editing callbacks
-    onSectionEdit?: (instruction: string, sectionIndex: number) => void;
+    onSectionEdit?: (instruction: string, sectionIndex: number, model: string) => void;
     onSectionDuplicate?: (sectionIndex: number) => void;
     onSectionDelete?: (sectionIndex: number) => void;
     onSectionMove?: (fromIndex: number, toIndex: number) => void;
@@ -52,6 +52,7 @@ interface LivePreviewProps {
     isSharing?: boolean;
     onLoadSample?: () => void;
     isLibraryHighlighted?: boolean;
+    onOpenTutorial?: () => void;
 }
 
 const GENERATING_MESSAGES = [
@@ -162,6 +163,7 @@ export function LivePreview({
     isSharing = false,
     onLoadSample,
     isLibraryHighlighted = false,
+    onOpenTutorial,
 }: LivePreviewProps) {
     const [viewMode, setViewMode] = useState<"desktop" | "mobile">("desktop");
     const [showEditPanel, setShowEditPanel] = useState(true);
@@ -170,6 +172,16 @@ export function LivePreview({
     const [copied, setCopied] = useState(false);
     const [simulateLoading, setSimulateLoading] = useState(false);
     const [creativeMessageIndex, setCreativeMessageIndex] = useState(0);
+    const [isMobile, setIsMobile] = useState(false);
+
+    useEffect(() => {
+        const handleResize = () => {
+            setIsMobile(window.innerWidth < 768);
+        };
+        handleResize();
+        window.addEventListener("resize", handleResize);
+        return () => window.removeEventListener("resize", handleResize);
+    }, []);
 
     useEffect(() => {
         let interval: NodeJS.Timeout;
@@ -204,6 +216,14 @@ export function LivePreview({
     const [editBarPosition, setEditBarPosition] = useState({ top: 0, left: 0, width: 400 });
     const [editingSectionIndex, setEditingSectionIndex] = useState<number>(0);
     const [sectionCount, setSectionCount] = useState(0);
+
+    const prevIsSectionEditing = useRef(isSectionEditing);
+    useEffect(() => {
+        if (prevIsSectionEditing.current && !isSectionEditing) {
+            setShowSectionEditBar(false);
+        }
+        prevIsSectionEditing.current = isSectionEditing;
+    }, [isSectionEditing]);
 
     // History (Undo/Redo)
     const [undoStack, setUndoStack] = useState<string[]>([]);
@@ -312,7 +332,8 @@ export function LivePreview({
     useEffect(() => {
         const iframe = iframeRef.current;
         const doc = iframe?.contentDocument;
-        if (!doc || !mjmlTree) return;
+        const win = iframe?.contentWindow;
+        if (!doc || !mjmlTree || !win) return;
 
         const bodyNode = mjmlTree.children.find(c => c.type === "body") || mjmlTree;
         const sections = bodyNode.children.filter(c => c.type === "section" && !c.isHidden);
@@ -322,10 +343,30 @@ export function LivePreview({
                 || doc.querySelector(`.ag-section-${idx}`) as HTMLElement;
             if (el) {
                 const editState = sectionEditStates.get(sectionNode.id);
+                const overlayId = `ag-section-overlay-${idx}`;
+                let overlay = doc.getElementById(overlayId);
+
                 if (editState === "processing") {
                     el.classList.add("ag-section-loading");
+                    if (!overlay) {
+                        overlay = doc.createElement("div");
+                        overlay.id = overlayId;
+                        overlay.className = "ag-section-loading-overlay";
+                        doc.body.appendChild(overlay);
+                    }
+                    const rect = el.getBoundingClientRect();
+                    const scrollX = win.scrollX || 0;
+                    const scrollY = win.scrollY || 0;
+                    overlay.style.top = `${rect.top + scrollY}px`;
+                    overlay.style.left = `${rect.left + scrollX}px`;
+                    overlay.style.width = `${rect.width}px`;
+                    overlay.style.height = `${rect.height}px`;
+                    overlay.style.display = "block";
                 } else {
                     el.classList.remove("ag-section-loading");
+                    if (overlay) {
+                        overlay.remove();
+                    }
                 }
             }
         });
@@ -526,6 +567,27 @@ export function LivePreview({
                     animation: ag-skeleton-loading 1.4s ease infinite !important;
                     z-index: 10 !important;
                     border-radius: 4px !important;
+                }
+                .ag-section-loading-overlay {
+                    position: absolute !important;
+                    top: 0 !important;
+                    left: 0 !important;
+                    right: 0 !important;
+                    bottom: 0 !important;
+                    width: 100% !important;
+                    height: 100% !important;
+                    min-height: 80px !important;
+                    background: linear-gradient(
+                        90deg,
+                        rgba(245, 243, 255, 0.85) 25%,
+                        rgba(237, 233, 254, 0.95) 37%,
+                        rgba(245, 243, 255, 0.85) 63%
+                    ) !important;
+                    background-size: 400% 100% !important;
+                    animation: ag-skeleton-loading 1.4s ease infinite !important;
+                    z-index: 99999 !important;
+                    pointer-events: none !important;
+                    border-radius: 6px !important;
                 }
                 @keyframes ag-skeleton-loading {
                     0% { background-position: 100% 50%; }
@@ -1806,10 +1868,9 @@ export function LivePreview({
         setShowSectionEditBar(true);
     }, []);
 
-    const handleSectionEditSubmit = useCallback((instruction: string, sectionIndex: number) => {
+    const handleSectionEditSubmit = useCallback((instruction: string, sectionIndex: number, model: string) => {
         if (onSectionEdit) {
-            onSectionEdit(instruction, sectionIndex);
-            setShowSectionEditBar(false);
+            onSectionEdit(instruction, sectionIndex, model);
         }
     }, [onSectionEdit]);
 
@@ -1882,6 +1943,7 @@ export function LivePreview({
                 isSharing={isSharing}
                 onSimulateLoading={() => setSimulateLoading(true)}
                 isLibraryHighlighted={isLibraryHighlighted}
+                onOpenTutorial={onOpenTutorial}
             />
 
             {/* ── Section Controls Overlay ── */}
@@ -1916,7 +1978,7 @@ export function LivePreview({
 
             {/* ── Content row ── */}
             <div className="flex flex-1 min-h-0">
-                <div className="flex-1 overflow-auto p-6 flex items-start justify-center relative scrollbar-hide">
+                <div className={clsx("flex-1 overflow-auto flex items-start justify-center relative scrollbar-hide", isMobile ? "p-0" : "p-6")}>
                     {/* ── Re-open tab when panel is collapsed ── */}
                     {!showEditPanel && html && (
                         <button
@@ -1935,10 +1997,12 @@ export function LivePreview({
                         className={clsx(
                             "bg-white transition-all duration-500 ease-out scrollbar-hide relative flex flex-col",
                             viewMode === "desktop"
-                                ? "w-full max-w-3xl min-h-[600px] shadow-2xl rounded-xl border border-slate-200 overflow-hidden"
+                                ? isMobile
+                                    ? "w-full h-full shadow-none border-none overflow-hidden"
+                                    : "w-full max-w-3xl min-h-[600px] shadow-2xl rounded-xl border border-slate-200 overflow-hidden"
                                 : "w-[360px] max-h-[760px] aspect-[9/19.5] border-[12px] border-slate-900 rounded-[44px] shadow-2xl ring-1 ring-slate-900/10"
                         )}
-                        style={viewMode === "desktop" ? { height: "calc(100vh - 100px)", maxHeight: 800 } : undefined}
+                        style={viewMode === "desktop" ? { height: isMobile ? "100%" : "calc(100vh - 100px)", maxHeight: isMobile ? "100%" : 800 } : undefined}
                     >
                         {/* Mobile camera notch simulation */}
                         {viewMode === "mobile" && (
@@ -2018,34 +2082,46 @@ export function LivePreview({
                     {showEditPanel && html && (
                         <motion.div
                             initial={{ width: 0, opacity: 0 }}
-                            animate={{ width: panelWidth, opacity: 1 }}
+                            animate={{ width: isMobile ? "100vw" : panelWidth, opacity: 1 }}
                             exit={{ width: 0, opacity: 0 }}
                             transition={{ duration: 0.22, ease: "easeOut" }}
-                            className="shrink-0 relative border-l border-slate-200 bg-white h-full"
-                            style={{ width: panelWidth }}
+                            className={clsx(
+                                "shrink-0 relative bg-white h-full border-l border-slate-200",
+                                isMobile ? "fixed inset-0 left-0 right-0 top-0 bottom-0 z-[100]" : ""
+                            )}
+                            style={{ width: isMobile ? "100vw" : panelWidth, left: isMobile ? 0 : undefined }}
                         >
                             {/* Drag resize handle */}
-                            <div
-                                onMouseDown={handleDragStart}
-                                className="absolute left-0 top-0 bottom-0 w-1.5 cursor-col-resize z-20 group flex items-center justify-center hover:bg-violet-100 transition-colors"
-                                title="Drag to resize"
-                            >
-                                <div className="w-0.5 h-8 bg-slate-300 group-hover:bg-violet-400 rounded-full transition-colors" />
-                            </div>
+                            {!isMobile && (
+                                <div
+                                    onMouseDown={handleDragStart}
+                                    className="absolute left-0 top-0 bottom-0 w-1.5 cursor-col-resize z-20 group flex items-center justify-center hover:bg-violet-100 transition-colors"
+                                    title="Drag to resize"
+                                >
+                                    <div className="w-0.5 h-8 bg-slate-300 group-hover:bg-violet-400 rounded-full transition-colors" />
+                                </div>
+                            )}
 
                             {/* ── Collapse Toggle Button ── */}
                             <button
                                 onClick={() => setShowEditPanel(false)}
-                                className="absolute -left-4 top-1/2 z-30 flex items-center justify-center w-8 h-8 rounded-full bg-white border border-slate-200 shadow-md text-slate-400 hover:text-slate-700 hover:border-slate-300 transition-all"
-                                style={{ transform: "translateY(-50%)" }}
+                                className={clsx(
+                                    "absolute z-30 flex items-center justify-center w-8 h-8 rounded-full bg-white border border-slate-200 shadow-md text-slate-400 hover:text-slate-700 hover:border-slate-300 transition-all",
+                                    isMobile ? "right-4 top-4" : "-left-4 top-1/2"
+                                )}
+                                style={isMobile ? undefined : { transform: "translateY(-50%)" }}
                                 title="Collapse panel"
                             >
-                                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                                    <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
-                                </svg>
+                                {isMobile ? (
+                                    <X className="w-4 h-4" />
+                                ) : (
+                                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                                        <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+                                    </svg>
+                                )}
                             </button>
 
-                            <div className="pl-1.5 h-full" style={{ width: panelWidth }}>
+                            <div className="h-full" style={{ width: isMobile ? "100%" : panelWidth }}>
                                 <PropertiesPanel
                                     hasSelection={hasSelection}
                                     selectedProps={selectedProps}

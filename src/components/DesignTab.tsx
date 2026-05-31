@@ -452,7 +452,7 @@ export function DesignTab({
                 {/* Text Shadow */}
                 <div className="mt-5 flex flex-col">
                     {(() => {
-                        const shadows = React.useMemo(() => {
+                        const shadows = (() => {
                             const str = selectedProps.textShadow;
                             if (!str || str === "none") return [];
                             const layers = str.split(/,(?![^\(]*\))/).map(s => s.trim()).filter(Boolean);
@@ -468,7 +468,7 @@ export function DesignTab({
                                 }
                                 return { x: "0px", y: "0px", blur: "0px", color: layer }; // fallback
                             });
-                        }, [selectedProps.textShadow]);
+                        })();
 
                         const updateShadows = (newShadows: any[]) => {
                             if (newShadows.length === 0) {

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
-import { Monitor, Smartphone, MailOpen, PencilLine, Undo2, Redo2, RotateCcw, Check, Copy, Library, Save, Download, Eye, Link, FileCode, Mail, ChevronDown } from "lucide-react";
+import { Monitor, Smartphone, MailOpen, PencilLine, Undo2, Redo2, RotateCcw, Check, Copy, Library, Save, Download, Eye, Link, FileCode, Mail, ChevronDown, Menu } from "lucide-react";
 import { clsx } from "clsx";
 import { Tooltip } from "./UI/Tooltip";
 import { motion, AnimatePresence } from "framer-motion";
@@ -28,6 +28,7 @@ interface PreviewToolbarProps {
     isSharing?: boolean;
     onSimulateLoading?: () => void;
     isLibraryHighlighted?: boolean;
+    onOpenTutorial?: () => void;
 }
 
 export function PreviewToolbar({
@@ -51,10 +52,39 @@ export function PreviewToolbar({
     onAddText,
     isSharing = false,
     onSimulateLoading,
-    isLibraryHighlighted = false
+    isLibraryHighlighted = false,
+    onOpenTutorial
 }: PreviewToolbarProps) {
     const [showExportDropdown, setShowExportDropdown] = useState(false);
     const dropdownRef = useRef<HTMLDivElement>(null);
+    const [isMobile, setIsMobile] = useState(false);
+    const [showMenu, setShowMenu] = useState(false);
+    const menuRef = useRef<HTMLDivElement>(null);
+
+    useEffect(() => {
+        const handleResize = () => {
+            setIsMobile(window.innerWidth < 768);
+        };
+        handleResize();
+        window.addEventListener("resize", handleResize);
+        return () => window.removeEventListener("resize", handleResize);
+    }, []);
+
+    // Close mobile menu on outside click
+    useEffect(() => {
+        const handleClickOutside = (event: MouseEvent) => {
+            if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
+                setShowMenu(false);
+            }
+        };
+
+        if (showMenu) {
+            document.addEventListener("mousedown", handleClickOutside);
+        }
+        return () => {
+            document.removeEventListener("mousedown", handleClickOutside);
+        };
+    }, [showMenu]);
 
     // Close dropdown on outside click
     useEffect(() => {
@@ -72,14 +102,256 @@ export function PreviewToolbar({
         };
     }, [showExportDropdown]);
 
+    if (isMobile) {
+        return (
+            <div className="border-b border-slate-200 bg-white flex items-center justify-between px-5 shrink-0 shadow-sm relative w-full" style={{ height: 52 }}>
+                <div className="flex items-center gap-3 text-sm font-semibold text-slate-700 shrink-0">
+                    <div className="flex items-center gap-2">
+                        <MailOpen className="w-4 h-4 text-violet-500" />
+                        <span>Live Preview</span>
+                    </div>
+                    {onOpenTutorial && (
+                        <button
+                            onClick={onOpenTutorial}
+                            className="text-[10px] font-bold text-violet-600 hover:text-white hover:bg-violet-600 border border-violet-200 hover:border-violet-600 px-2 py-0.5 rounded-md transition-all uppercase tracking-wider bg-transparent cursor-pointer"
+                        >
+                            Tutorial
+                        </button>
+                    )}
+                </div>
+
+                <div className="flex items-center gap-2 shrink-0">
+                    <button
+                        onClick={() => setShowMenu(prev => !prev)}
+                        className={clsx(
+                            "h-8 w-8 flex items-center justify-center rounded-lg border border-slate-200 bg-slate-50 text-slate-600 hover:bg-slate-100 transition-all shadow-sm active:scale-95",
+                            showMenu && "bg-violet-50 text-violet-600 border-violet-200"
+                        )}
+                    >
+                        <Menu className="w-4 h-4" />
+                    </button>
+                </div>
+
+                {/* Dropdown Menu */}
+                <AnimatePresence>
+                    {showMenu && (
+                        <div className="fixed inset-0 z-[110]" onClick={() => setShowMenu(false)}>
+                            <div className="absolute inset-0 bg-slate-900/10 backdrop-blur-[1px]" />
+                            <motion.div
+                                ref={menuRef}
+                                initial={{ opacity: 0, y: -10, scale: 0.95 }}
+                                animate={{ opacity: 1, y: 0, scale: 1 }}
+                                exit={{ opacity: 0, y: -10, scale: 0.95 }}
+                                transition={{ duration: 0.18, ease: "easeOut" }}
+                                onClick={(e) => e.stopPropagation()}
+                                className="absolute right-4 top-[56px] z-[120] w-[280px] bg-white border border-slate-200 rounded-xl shadow-2xl p-3.5 flex flex-col gap-3 max-h-[80vh] overflow-y-auto"
+                                style={{ boxShadow: "0 20px 25px -5px rgba(0,0,0,0.1), 0 10px 10px -5px rgba(0,0,0,0.04)" }}
+                            >
+                                {/* Viewport Selection */}
+                                <div className="space-y-1">
+                                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider px-2">Viewport</p>
+                                    <div className="flex items-center bg-slate-100 p-1 rounded-lg gap-1">
+                                        <button
+                                            onClick={() => {
+                                                setViewMode("desktop");
+                                                setShowMenu(false);
+                                            }}
+                                            className={clsx(
+                                                "flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-md text-xs font-semibold transition-all",
+                                                viewMode === "desktop" ? "bg-white shadow-sm text-violet-600" : "text-slate-500 hover:text-slate-700"
+                                            )}
+                                        >
+                                            <Monitor className="w-3.5 h-3.5" />
+                                            <span>Desktop</span>
+                                        </button>
+                                        <button
+                                            onClick={() => {
+                                                setViewMode("mobile");
+                                                setShowMenu(false);
+                                            }}
+                                            className={clsx(
+                                                "flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-md text-xs font-semibold transition-all",
+                                                viewMode === "mobile" ? "bg-white shadow-sm text-violet-600" : "text-slate-500 hover:text-slate-700"
+                                            )}
+                                        >
+                                            <Smartphone className="w-3.5 h-3.5" />
+                                            <span>Mobile</span>
+                                        </button>
+                                    </div>
+                                </div>
+
+                                <div className="h-px bg-slate-100 my-0.5" />
+
+                                {/* Edit Actions */}
+                                <div className="space-y-1">
+                                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider px-2">Actions</p>
+                                    <button
+                                        onClick={() => {
+                                            onAddText();
+                                            setShowMenu(false);
+                                        }}
+                                        disabled={!html}
+                                        className="w-full flex items-center gap-2.5 px-2 py-1.5 rounded-lg text-left hover:bg-slate-50 transition-colors disabled:opacity-50"
+                                    >
+                                        <PencilLine className="w-4 h-4 text-slate-500" />
+                                        <span className="text-xs font-semibold text-slate-700">Add Text Block</span>
+                                    </button>
+                                    <div className="grid grid-cols-3 gap-1 px-1 pt-1">
+                                        <button
+                                            onClick={() => {
+                                                undo();
+                                            }}
+                                            disabled={undoStackLength === 0}
+                                            className="flex flex-col items-center justify-center py-1.5 border border-slate-100 rounded-lg hover:bg-slate-50 disabled:opacity-40"
+                                            title="Undo"
+                                        >
+                                            <Undo2 className="w-3.5 h-3.5 text-slate-600" />
+                                            <span className="text-[9px] font-semibold text-slate-500 mt-1">Undo</span>
+                                        </button>
+                                        <button
+                                            onClick={() => {
+                                                redo();
+                                            }}
+                                            disabled={redoStackLength === 0}
+                                            className="flex flex-col items-center justify-center py-1.5 border border-slate-100 rounded-lg hover:bg-slate-50 disabled:opacity-40"
+                                            title="Redo"
+                                        >
+                                            <Redo2 className="w-3.5 h-3.5 text-slate-600" />
+                                            <span className="text-[9px] font-semibold text-slate-500 mt-1">Redo</span>
+                                        </button>
+                                        <button
+                                            onClick={() => {
+                                                reset();
+                                                setShowMenu(false);
+                                            }}
+                                            disabled={!html}
+                                            className="flex flex-col items-center justify-center py-1.5 border border-slate-100 rounded-lg hover:bg-red-50 hover:border-red-100 disabled:opacity-40"
+                                            title="Reset All"
+                                        >
+                                            <RotateCcw className="w-3.5 h-3.5 text-red-500" />
+                                            <span className="text-[9px] font-semibold text-red-500 mt-1">Reset</span>
+                                        </button>
+                                    </div>
+                                </div>
+
+                                <div className="h-px bg-slate-100 my-0.5" />
+
+                                {/* Templates & Saving */}
+                                <div className="space-y-1">
+                                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider px-2">Workspace</p>
+                                    <button
+                                        onClick={() => {
+                                            onOpenHistory?.();
+                                            setShowMenu(false);
+                                        }}
+                                        className={clsx(
+                                            "w-full flex items-center gap-2.5 px-2 py-1.5 rounded-lg text-left transition-colors",
+                                            isLibraryHighlighted ? "bg-violet-50 text-violet-700" : "hover:bg-slate-50 text-slate-700"
+                                        )}
+                                    >
+                                        <Library className="w-4 h-4" />
+                                        <span className="text-xs font-semibold">Templates Library</span>
+                                    </button>
+                                    <button
+                                        onClick={() => {
+                                            onSaveTemplate?.();
+                                            setShowMenu(false);
+                                        }}
+                                        disabled={!html}
+                                        className="w-full flex items-center gap-2.5 px-2 py-1.5 rounded-lg text-left hover:bg-slate-50 transition-colors disabled:opacity-50"
+                                    >
+                                        <Save className="w-4 h-4 text-slate-500" />
+                                        <span className="text-xs font-semibold text-slate-700">Save Template</span>
+                                    </button>
+                                    <button
+                                        onClick={() => {
+                                            onPreview();
+                                            setShowMenu(false);
+                                        }}
+                                        disabled={!html}
+                                        className="w-full flex items-center gap-2.5 px-2 py-1.5 rounded-lg text-left hover:bg-slate-50 transition-colors disabled:opacity-50"
+                                    >
+                                        <Eye className="w-4 h-4 text-slate-500" />
+                                        <span className="text-xs font-semibold text-slate-700">Clean Preview</span>
+                                    </button>
+                                </div>
+
+                                <div className="h-px bg-slate-100 my-0.5" />
+
+                                {/* Export Options */}
+                                <div className="space-y-1">
+                                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider px-2">Export Options</p>
+                                    <button
+                                        onClick={() => {
+                                            onDownloadHtml();
+                                            setShowMenu(false);
+                                        }}
+                                        className="w-full flex items-center gap-2.5 px-2 py-1.5 rounded-lg text-left hover:bg-slate-50 transition-colors"
+                                    >
+                                        <FileCode className="w-4 h-4 text-violet-500" />
+                                        <span className="text-xs font-semibold text-slate-700">Download HTML</span>
+                                    </button>
+                                    <button
+                                        onClick={() => {
+                                            onDownloadEml();
+                                            setShowMenu(false);
+                                        }}
+                                        className="w-full flex items-center gap-2.5 px-2 py-1.5 rounded-lg text-left hover:bg-slate-50 transition-colors"
+                                    >
+                                        <Mail className="w-4 h-4 text-violet-500" />
+                                        <span className="text-xs font-semibold text-slate-700">Download .EML</span>
+                                    </button>
+                                    <button
+                                        onClick={() => {
+                                            onSharePreview();
+                                            setShowMenu(false);
+                                        }}
+                                        disabled={isSharing}
+                                        className="w-full flex items-center gap-2.5 px-2 py-1.5 rounded-lg text-left hover:bg-slate-50 transition-colors disabled:opacity-50"
+                                    >
+                                        {isSharing ? (
+                                            <RotateCcw className="w-4 h-4 text-violet-500 animate-spin" />
+                                        ) : (
+                                            <Link className="w-4 h-4 text-violet-500" />
+                                        )}
+                                        <span className="text-xs font-semibold text-slate-700">Share Preview Link</span>
+                                    </button>
+                                </div>
+                            </motion.div>
+                        </div>
+                    )}
+                </AnimatePresence>
+            </div>
+        );
+    }
+
     return (
-        <div className="border-b border-slate-200 bg-white flex items-center justify-between px-5 shrink-0 shadow-sm" style={{ height: 52 }}>
-            <div className="flex items-center gap-2 text-sm font-semibold text-slate-700">
-                <MailOpen className="w-4 h-4 text-violet-500" />
-                <span>Live Preview</span>
+        <div className="border-b border-slate-200 bg-white flex items-center justify-between px-5 shrink-0 shadow-sm overflow-x-auto hide-scroll-bar gap-4 select-none w-full min-w-0" style={{ height: 52 }}>
+            <style dangerouslySetInnerHTML={{__html: `
+                .hide-scroll-bar::-webkit-scrollbar {
+                    display: none !important;
+                }
+                .hide-scroll-bar {
+                    -ms-overflow-style: none !important;
+                    scrollbar-width: none !important;
+                }
+            `}} />
+            <div className="flex items-center gap-3 text-sm font-semibold text-slate-700 shrink-0">
+                <div className="flex items-center gap-2">
+                    <MailOpen className="w-4 h-4 text-violet-500" />
+                    <span>Live Preview</span>
+                </div>
+                {onOpenTutorial && (
+                    <button
+                        onClick={onOpenTutorial}
+                        className="text-[10px] font-bold text-violet-600 hover:text-white hover:bg-violet-600 border border-violet-200 hover:border-violet-600 px-2 py-0.5 rounded-md transition-all uppercase tracking-wider bg-transparent cursor-pointer"
+                    >
+                        Tutorial
+                    </button>
+                )}
             </div>
 
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 shrink-0">
                 <div className="flex items-center bg-slate-100 p-1 rounded-lg gap-0.5">
                     {(["desktop", "mobile"] as const).map((mode) => (
                         <Tooltip key={mode} content={mode === "desktop" ? "Desktop view" : "Mobile view"} position="bottom">

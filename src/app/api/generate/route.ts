@@ -37,9 +37,9 @@ function injectSectionMarkers(mjmlCode: string): string {
  * that is not placehold.co into a standard placehold.co placeholder image.
  */
 function sanitizeImageSources(mjmlCode: string): string {
-    // Regex matches src="URL" or src='URL' where URL starts with http/https but NOT placehold.co and NOT images.pexels.com
+    // Regex matches src="URL" or src='URL' where URL starts with http/https but NOT placehold.co
     // Capture the quote character in group 1, and the URL in group 2
-    return mjmlCode.replace(/src=(["'])(https?:\/\/(?!placehold\.co|images\.pexels\.com)[^"'\s>]+)\1/gi, (match, quote, url) => {
+    return mjmlCode.replace(/src=(["'])(https?:\/\/(?!placehold\.co)[^"'\s>]+)\1/gi, (match, quote, url) => {
         let width = "600";
         let height = "400";
         let text = "Image+Placeholder";
@@ -54,7 +54,7 @@ function sanitizeImageSources(mjmlCode: string): string {
         // Try to extract descriptive words from path/query as placeholder text
         try {
             const urlObj = new URL(url);
-            const textParam = urlObj.searchParams.get("text") || urlObj.searchParams.get("q");
+            const textParam = urlObj.searchParams.get("text") || urlObj.searchParams.get("q") || urlObj.searchParams.get("query");
             if (textParam) {
                 text = encodeURIComponent(textParam);
             } else {
@@ -270,17 +270,13 @@ Return the complete updated MJML. Modify only what was requested, preserve every
             mjmlCode = mjmlMatch[0];
         }
 
-        // Resolve Pexels images if there are any placeholders, unless it's gemini-3.1-flash-lite which requires pure text placeholders
-        if (resolvedModel === "gemini-3.1-flash-lite") {
-            mjmlCode = mjmlCode.replace(/https:\/\/images\.pexels\.com\/placeholder\?query=([^"'\s>]+)/gi, (match, encodedQuery) => {
-                return `https://placehold.co/600x400?text=${encodedQuery}`;
-            });
-            mjmlCode = mjmlCode.replace(/src=(["'])(https?:\/\/images\.pexels\.com\/[^"'\s>]+)\1/gi, (match, quote, url) => {
-                return `src="https://placehold.co/600x400?text=Image"`;
-            });
-        } else {
-            mjmlCode = await resolvePexelsImages(mjmlCode);
-        }
+        // Always use pure text placeholders for all models
+        mjmlCode = mjmlCode.replace(/https:\/\/images\.pexels\.com\/placeholder\?query=([^"'\s>]+)/gi, (match, encodedQuery) => {
+            return `https://placehold.co/600x400?text=${encodedQuery}`;
+        });
+        mjmlCode = mjmlCode.replace(/src=(["'])(https?:\/\/images\.pexels\.com\/[^"'\s>]+)\1/gi, (match, quote, url) => {
+            return `src="https://placehold.co/600x400?text=Image"`;
+        });
 
         // Rewrite all external/unauthorized image URLs to placehold.co text placeholders
         mjmlCode = sanitizeImageSources(mjmlCode);

@@ -577,10 +577,7 @@ export function moveNode(
  * Get the section index of a node (for mapping to compiled HTML).
  */
 export function getSectionIndex(root: MjmlNode, nodeId: string): number {
-  const body = findBody(root);
-  if (!body) return -1;
-
-  const sections = body.children.filter(c => c.type === "section" && !c.isHidden);
+  const sections = getVisibleSections(root);
   return sections.findIndex(s => s.id === nodeId || containsNode(s, nodeId));
 }
 
@@ -604,7 +601,24 @@ function findBody(root: MjmlNode): MjmlNode | null {
 export function getVisibleSections(root: MjmlNode): MjmlNode[] {
   const body = findBody(root);
   if (!body) return [];
-  return body.children.filter(c => c.type === "section" && !c.isHidden);
+  
+  const sections: MjmlNode[] = [];
+  const traverse = (node: MjmlNode) => {
+    if (node.isHidden) return;
+    if (node.type === "section") {
+      sections.push(node);
+      return;
+    }
+    for (const child of node.children) {
+      traverse(child);
+    }
+  };
+
+  for (const child of body.children) {
+    traverse(child);
+  }
+
+  return sections;
 }
 
 // ── Deep clone ──────────────────────────────────────────────────────────────

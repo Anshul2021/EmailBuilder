@@ -75,11 +75,18 @@ function findClosingTag(mjml: string, startOffset: number, tagName: string): num
 /**
  * Replace a single section at the given index with new MJML content.
  */
+/**
+ * Replace a single section at the given index with new MJML content.
+ */
 export function replaceMjmlSection(fullMjml: string, sectionIndex: number, newSectionMjml: string): string {
   const sections = parseMjmlSections(fullMjml);
-  if (sectionIndex < 0 || sectionIndex >= sections.length) return fullMjml;
+  if (sections.length === 0) return fullMjml;
 
-  const section = sections[sectionIndex];
+  let index = sectionIndex;
+  if (index < 0) index = 0;
+  if (index >= sections.length) index = sections.length - 1;
+
+  const section = sections[index];
   return fullMjml.substring(0, section.startOffset) + newSectionMjml + fullMjml.substring(section.endOffset);
 }
 
@@ -88,9 +95,13 @@ export function replaceMjmlSection(fullMjml: string, sectionIndex: number, newSe
  */
 export function duplicateSection(fullMjml: string, sectionIndex: number): string {
   const sections = parseMjmlSections(fullMjml);
-  if (sectionIndex < 0 || sectionIndex >= sections.length) return fullMjml;
+  if (sections.length === 0) return fullMjml;
 
-  const section = sections[sectionIndex];
+  let index = sectionIndex;
+  if (index < 0) index = 0;
+  if (index >= sections.length) index = sections.length - 1;
+
+  const section = sections[index];
   return fullMjml.substring(0, section.endOffset) + "\n" + section.content + fullMjml.substring(section.endOffset);
 }
 
@@ -99,9 +110,13 @@ export function duplicateSection(fullMjml: string, sectionIndex: number): string
  */
 export function removeSection(fullMjml: string, sectionIndex: number): string {
   const sections = parseMjmlSections(fullMjml);
-  if (sectionIndex < 0 || sectionIndex >= sections.length) return fullMjml;
+  if (sections.length === 0) return fullMjml;
 
-  const section = sections[sectionIndex];
+  let index = sectionIndex;
+  if (index < 0) index = 0;
+  if (index >= sections.length) index = sections.length - 1;
+
+  const section = sections[index];
   // Also trim any trailing whitespace/newline
   let endOffset = section.endOffset;
   while (endOffset < fullMjml.length && (fullMjml[endOffset] === "\n" || fullMjml[endOffset] === "\r")) {
@@ -116,25 +131,33 @@ export function removeSection(fullMjml: string, sectionIndex: number): string {
  */
 export function moveSection(fullMjml: string, fromIndex: number, toIndex: number): string {
   const sections = parseMjmlSections(fullMjml);
-  if (fromIndex < 0 || fromIndex >= sections.length) return fullMjml;
-  if (toIndex < 0 || toIndex >= sections.length) return fullMjml;
-  if (fromIndex === toIndex) return fullMjml;
+  if (sections.length === 0) return fullMjml;
 
-  const sectionContent = sections[fromIndex].content;
+  let fromIdx = fromIndex;
+  if (fromIdx < 0) fromIdx = 0;
+  if (fromIdx >= sections.length) fromIdx = sections.length - 1;
+
+  let toIdx = toIndex;
+  if (toIdx < 0) toIdx = 0;
+  if (toIdx >= sections.length) toIdx = sections.length - 1;
+
+  if (fromIdx === toIdx) return fullMjml;
+
+  const sectionContent = sections[fromIdx].content;
 
   // First remove, then insert at the new position
-  let result = removeSection(fullMjml, fromIndex);
+  let result = removeSection(fullMjml, fromIdx);
 
   // Re-parse after removal to get correct offsets
   const updatedSections = parseMjmlSections(result);
 
   // Determine insertion point
-  if (toIndex >= updatedSections.length) {
+  if (toIdx >= updatedSections.length) {
     // Insert after the last section
     const lastSection = updatedSections[updatedSections.length - 1];
     result = result.substring(0, lastSection.endOffset) + "\n" + sectionContent + result.substring(lastSection.endOffset);
   } else {
-    const targetSection = updatedSections[toIndex];
+    const targetSection = updatedSections[toIdx];
     result = result.substring(0, targetSection.startOffset) + sectionContent + "\n" + result.substring(targetSection.startOffset);
   }
 
@@ -153,6 +176,11 @@ export function getSectionCount(mjml: string): number {
  */
 export function getSection(mjml: string, sectionIndex: number): string | null {
   const sections = parseMjmlSections(mjml);
-  if (sectionIndex < 0 || sectionIndex >= sections.length) return null;
-  return sections[sectionIndex].content;
+  if (sections.length === 0) return null;
+
+  let index = sectionIndex;
+  if (index < 0) index = 0;
+  if (index >= sections.length) index = sections.length - 1;
+
+  return sections[index].content;
 }

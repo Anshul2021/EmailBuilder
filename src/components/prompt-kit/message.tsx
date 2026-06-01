@@ -10,6 +10,8 @@ export function Message({ children, className = "" }: { children: React.ReactNod
   );
 }
 
+import BotIcon from "@/Assets/Bot.webp";
+
 export function MessageAvatar({
   src,
   alt,
@@ -19,9 +21,14 @@ export function MessageAvatar({
   alt?: string;
   fallback?: string;
 }) {
+  const avatarSrc = src || BotIcon.src;
   return (
-    <div className="w-8 h-8 rounded-full bg-purple-100 flex items-center justify-center text-xs font-semibold text-purple-600 border border-purple-200 shrink-0">
-      {fallback || "AI"}
+    <div className="w-8 h-8 rounded-full bg-purple-50 flex items-center justify-center border border-purple-200 shrink-0 overflow-hidden">
+      {avatarSrc ? (
+        <img src={avatarSrc} alt={alt || "AI Bot"} className="w-full h-full object-cover" />
+      ) : (
+        <span className="text-xs font-semibold text-purple-600">{fallback || "AI"}</span>
+      )}
     </div>
   );
 }

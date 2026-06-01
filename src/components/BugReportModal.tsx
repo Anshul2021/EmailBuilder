@@ -59,7 +59,7 @@ export function BugReportModal({ isOpen, onClose }: BugReportModalProps) {
                         animate={{ opacity: 1, scale: 1, y: 0 }}
                         exit={{ opacity: 0, scale: 0.95, y: 8 }}
                         transition={{ type: "spring", duration: 0.3, bounce: 0.15 }}
-                        className="relative w-full max-w-md bg-white rounded-2xl shadow-2xl border border-slate-100 overflow-hidden z-10"
+                        className="relative w-full max-w-sm bg-white rounded-lg shadow-2xl border border-slate-100 overflow-hidden z-10"
                     >
 
                         {/* Close button */}
@@ -149,14 +149,14 @@ export function BugReportModal({ isOpen, onClose }: BugReportModalProps) {
                                     </div>
                                 </form>
                             ) : (
-                                <div className="flex flex-col items-center text-center py-6 space-y-4">
+                                <div className="flex flex-col items-center text-center py-2 space-y-4">
                                     <div className="w-12 h-12 rounded-full bg-emerald-50 border border-emerald-100 flex items-center justify-center">
                                         <CheckCircle2 className="w-6 h-6 text-emerald-500" />
                                     </div>
                                     <div className="space-y-1">
                                         <h4 className="text-sm font-bold text-slate-800">Thank you!</h4>
                                         <p className="text-xs text-slate-500 leading-relaxed max-w-[280px]">
-                                            Your bug report has been successfully recorded. We will investigate the issue as soon as possible.
+                                            Your bug report has been successfully recorded
                                         </p>
                                     </div>
                                     <button

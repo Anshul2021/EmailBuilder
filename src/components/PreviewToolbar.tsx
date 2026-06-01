@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
-import { Monitor, Smartphone, MailOpen, PencilLine, Undo2, Redo2, RotateCcw, Check, Copy, Library, Save, Download, Eye, Link, FileCode, Mail, ChevronDown, Menu, X } from "lucide-react";
+import { Monitor, Smartphone, MailOpen, PencilLine, Undo2, Redo2, RotateCcw, Check, Copy, Library, Save, Download, Eye, Link, FileCode, Mail, ChevronDown, Menu, X, Loader2 } from "lucide-react";
 import { clsx } from "clsx";
 import { Tooltip } from "./UI/Tooltip";
 import { motion, AnimatePresence } from "framer-motion";
@@ -97,6 +97,16 @@ export function PreviewToolbar({
             document.removeEventListener("mousedown", handleClickOutside);
         };
     }, [showExportDropdown]);
+
+    // Close menu/dropdown when sharing completes
+    const prevSharingRef = useRef(isSharing);
+    useEffect(() => {
+        if (prevSharingRef.current && !isSharing) {
+            setShowMenu(false);
+            setShowExportDropdown(false);
+        }
+        prevSharingRef.current = isSharing;
+    }, [isSharing]);
 
     return (
         <>
@@ -319,17 +329,18 @@ export function PreviewToolbar({
                                         onClick={() => {
                                             triggerMobileHaptic();
                                             onSharePreview();
-                                            setShowMenu(false);
                                         }}
                                         disabled={isSharing}
                                         className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-left hover:bg-slate-50 transition-colors disabled:opacity-50 text-slate-700"
                                     >
                                         {isSharing ? (
-                                            <RotateCcw className="w-4 h-4 text-violet-500 animate-spin" />
+                                            <Loader2 className="w-4 h-4 text-violet-500 animate-spin" />
                                         ) : (
                                             <Link className="w-4 h-4 text-violet-500" />
                                         )}
-                                        <span className="text-xs font-semibold">Share Preview Link</span>
+                                        <span className="text-xs font-semibold">
+                                            {isSharing ? "Generating link..." : "Share Preview Link"}
+                                        </span>
                                     </button>
                                 </div>
 
@@ -534,19 +545,22 @@ export function PreviewToolbar({
                                         type="button"
                                         onClick={() => {
                                             onSharePreview();
-                                            setShowExportDropdown(false);
                                         }}
                                         disabled={isSharing}
                                         className="w-full flex items-start gap-2.5 px-3 py-2 rounded-lg text-left hover:bg-slate-50 transition-colors disabled:opacity-50"
                                     >
                                         {isSharing ? (
-                                            <RotateCcw className="w-4 h-4 text-violet-500 mt-0.5 shrink-0 animate-spin" />
+                                            <Loader2 className="w-4 h-4 text-violet-500 mt-0.5 shrink-0 animate-spin" />
                                         ) : (
                                             <Link className="w-4 h-4 text-violet-500 mt-0.5 shrink-0" />
                                         )}
                                         <div className="flex flex-col">
-                                            <span className="text-xs font-semibold text-slate-800">Share Preview</span>
-                                            <span className="text-[10px] text-slate-400">Generate public preview link</span>
+                                            <span className="text-xs font-semibold text-slate-800">
+                                                {isSharing ? "Generating link..." : "Share Preview"}
+                                            </span>
+                                            <span className="text-[10px] text-slate-400">
+                                                {isSharing ? "Creating public preview..." : "Generate public preview link"}
+                                            </span>
                                         </div>
                                     </button>
                                 </motion.div>

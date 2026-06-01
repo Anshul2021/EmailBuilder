@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { GoogleGenerativeAI, Part, Content } from "@google/generative-ai";
 import { SECTION_EDIT_PROMPT, GEMINI_MODELS } from "@/lib/prompts";
 import { resolvePexelsImages } from "@/lib/pexels";
+import { getClientIp, getUsage, incrementUsage } from "@/lib/rateLimiter";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 30;
@@ -67,6 +68,19 @@ export async function POST(req: NextRequest) {
             );
         }
 
+        // Apply rate limit for section AI generation
+        const ip = getClientIp(req);
+        const clientId = req.headers.get("x-client-session-id") || undefined;
+        const usage = getUsage(ip, clientId);
+
+        // Check if IP is blocked due to Sybil prevention
+        if (usage.isIpBlocked) {
+            return NextResponse.json({
+                error: "Generation limit exceeded for this IP address. Please contact support.",
+                code: "IP_LIMIT_EXCEEDED"
+            }, { status: 429 });
+        }
+
         // Validate the model against the allowed GEMINI_MODELS list
         let primaryModel = requestedModel;
         if (!primaryModel) {
@@ -76,6 +90,15 @@ export async function POST(req: NextRequest) {
                 { error: "Invalid model selected" },
                 { status: 400 }
             );
+        }
+
+        // Check if selected model's limit has been reached
+        const selectedModelUsage = usage.modelCounts?.[primaryModel];
+        if (selectedModelUsage && selectedModelUsage.remaining <= 0) {
+            return NextResponse.json({
+                error: `Daily generation limit reached for "${primaryModel}". Please switch to another model in the dropdown.`,
+                code: "LIMIT_EXCEEDED"
+            }, { status: 429 });
         }
 
         // Build the try queue: primary model first, followed by others in fallback list
@@ -192,7 +215,15 @@ export async function POST(req: NextRequest) {
             return NextResponse.json({ error: errMsg, code: "GENERATION_FAILED" }, { status: 500 });
         }
 
-        return NextResponse.json({ sectionMjml: sectionCode, modelUsed: resolvedModel, failedModels });
+        // Increment usage limit only on successful generation
+        const updatedUsage = incrementUsage(ip, resolvedModel, clientId);
+
+        return NextResponse.json({ 
+            sectionMjml: sectionCode, 
+            modelUsed: resolvedModel, 
+            failedModels,
+            usage: updatedUsage
+        });
 
     } catch (error: unknown) {
         const msg = error instanceof Error ? error.message : String(error);

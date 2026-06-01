@@ -29,6 +29,8 @@ interface PreviewToolbarProps {
     onSimulateLoading?: () => void;
     isLibraryHighlighted?: boolean;
     onOpenTutorial?: () => void;
+    onSendTestEmail?: () => void;
+    isSendingTestEmail?: boolean;
 }
 
 const triggerMobileHaptic = () => {
@@ -59,7 +61,9 @@ export function PreviewToolbar({
     isSharing = false,
     onSimulateLoading,
     isLibraryHighlighted = false,
-    onOpenTutorial
+    onOpenTutorial,
+    onSendTestEmail,
+    isSendingTestEmail
 }: PreviewToolbarProps) {
     const [showExportDropdown, setShowExportDropdown] = useState(false);
     const dropdownRef = useRef<HTMLDivElement>(null);
@@ -296,6 +300,24 @@ export function PreviewToolbar({
                                         <Eye className="w-4 h-4 text-slate-500" />
                                         <span className="text-xs font-semibold">Clean Preview</span>
                                     </button>
+                                    <button
+                                        onClick={() => {
+                                            triggerMobileHaptic();
+                                            onSendTestEmail?.();
+                                            setShowMenu(false);
+                                        }}
+                                        disabled={!html || isSendingTestEmail}
+                                        className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-left hover:bg-slate-50 transition-colors disabled:opacity-50 text-slate-700"
+                                    >
+                                        {isSendingTestEmail ? (
+                                            <Loader2 className="w-4 h-4 text-violet-500 animate-spin" />
+                                        ) : (
+                                            <Mail className="w-4 h-4 text-violet-500" />
+                                        )}
+                                        <span className="text-xs font-semibold">
+                                            {isSendingTestEmail ? "Sending Test..." : "Send Test Email"}
+                                        </span>
+                                    </button>
                                 </div>
 
                                 <div className="h-px bg-slate-100 my-0.5" />
@@ -484,6 +506,21 @@ export function PreviewToolbar({
                         >
                             <Eye className="w-3.5 h-3.5" />
                             Preview
+                        </button>
+                    </Tooltip>
+
+                    <Tooltip content="Send test email to organdy69@gmail.com" position="bottom">
+                        <button
+                            onClick={onSendTestEmail}
+                            disabled={!html || isSendingTestEmail}
+                            className="flex items-center gap-1.5 text-xs font-semibold bg-violet-100 text-violet-700 px-3 py-1.5 rounded-lg hover:bg-violet-200 transition-colors shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                            {isSendingTestEmail ? (
+                                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                            ) : (
+                                <Mail className="w-3.5 h-3.5" />
+                            )}
+                            Test Mail
                         </button>
                     </Tooltip>
 

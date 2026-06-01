@@ -30,6 +30,19 @@ interface Message {
   isImage?: boolean;
 }
 
+const getClientSessionId = (): string => {
+  if (typeof window === "undefined") return "";
+  const key = "ai_email_builder_client_session_id";
+  let id = localStorage.getItem(key);
+  if (!id) {
+    id = typeof crypto !== "undefined" && crypto.randomUUID
+      ? crypto.randomUUID()
+      : Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
+    localStorage.setItem(key, id);
+  }
+  return id;
+};
+
 export default function Home() {
   const [htmlContent, setHtmlContent] = useState<string>("");
   const [mjml, setMjml] = useState<string>("");
@@ -45,6 +58,7 @@ export default function Home() {
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
   const [showPreviewModal, setShowPreviewModal] = useState(false);
   const [isSharing, setIsSharing] = useState(false);
+  const [isSendingTestEmail, setIsSendingTestEmail] = useState(false);
   const { credits, totalCredits, percentage, deductCredits } = useCredits();
   const [usage, setUsage] = useState<{ used: number; limit: number; remaining: number } | null>(null);
   const [showSaveModal, setShowSaveModal] = useState(false);
@@ -146,7 +160,9 @@ export default function Home() {
 
   // Fetch initial usage count on mount
   useEffect(() => {
-    fetch("/api/usage")
+    fetch("/api/usage", {
+      headers: { "x-client-session-id": getClientSessionId() }
+    })
       .then((res) => res.json())
       .then((data) => {
         if (data.usage) {
@@ -158,7 +174,10 @@ export default function Home() {
 
   const handleResetUsage = async () => {
     try {
-      const res = await fetch("/api/usage", { method: "POST" });
+      const res = await fetch("/api/usage", {
+        method: "POST",
+        headers: { "x-client-session-id": getClientSessionId() }
+      });
       const data = await res.json();
       if (data.usage) {
         setUsage(data.usage);
@@ -224,6 +243,97 @@ export default function Home() {
     }
   }, []);
 
+  const isPromptIrrelevant = (prompt: string): { isIrrelevant: boolean; response?: string } => {
+    const clean = prompt.trim().toLowerCase().replace(/[.,\/#!$%\^&\*;:{}=\-_`~()?]/g, "");
+    
+    // 1. Simple greetings
+    const greetings = ["hi", "hello", "hey", "hola", "yo", "greetings", "good morning", "good afternoon", "good evening", "sup"];
+    if (greetings.includes(clean)) {
+      return {
+        isIrrelevant: true,
+        response: `I am an AI Email Template Builder, so I can only understand prompts related to designing, structuring, or editing email templates.
+
+Please describe the email you want. Suggestions:
+- *"Create a minimalist welcome email"*
+- *"Design a promotional newsletter"*
+- *"Build a standard password reset email"*`
+      };
+    }
+
+    // 2. Generic short/unrelated test strings
+    const simpleTests = ["test", "demo", "asdf", "hello world", "help", "hey there", "xyz"];
+    if (simpleTests.includes(clean)) {
+      return {
+        isIrrelevant: true,
+        response: `I am an AI Email Template Builder, so I can only understand prompts related to designing, structuring, or editing email templates.
+
+Please describe the email you want. Suggestions:
+- *"Create a welcome email template"*
+- *"Design a Thanksgiving newsletter"*
+- *"Build a clean receipt/invoice email"*`
+      };
+    }
+
+    // 3. Irrelevant questions/tasks
+    const irrelevantPatterns = [
+      /^(who|what|how) are you/i,
+      /your name/i,
+      /weather/i,
+      /joke/i,
+      /poem/i,
+      /song/i,
+      /recipe/i,
+      /capital of/i,
+      /how to cook/i,
+      /math/i,
+      /calculate/i,
+      /translate/i,
+      /write an essay/i,
+      /write a story/i,
+      /coding questions/i,
+      /javascript/i,
+      /python/i,
+      /rust/i,
+      /react/i,
+      /angular/i,
+      /sql/i
+    ];
+
+    const emailKeywords = ["email", "newsletter", "template", "mjml", "html", "subscriber", "campaign", "promo", "marketing", "transactional", "receipt", "welcome", "card", "footer", "header", "hero", "layout", "button", "logo", "text", "image"];
+    const hasEmailKeywords = emailKeywords.some(keyword => clean.includes(keyword));
+
+    if (!hasEmailKeywords) {
+      for (const pattern of irrelevantPatterns) {
+        if (pattern.test(clean)) {
+          return {
+            isIrrelevant: true,
+            response: `I am an AI Email Template Builder, so I can only understand prompts related to designing, structuring, or editing email templates.
+
+Please describe the email you want. Suggestions:
+- *"Create a monthly newsletter template"*
+- *"Build a black friday sale email"*
+- *"Generate a sleek product launch email"*`
+          };
+        }
+      }
+      
+      // If the prompt is too short (e.g. less than 10 characters) and has no email keywords
+      if (clean.length < 8) {
+        return {
+          isIrrelevant: true,
+          response: `I am an AI Email Template Builder, so I can only understand prompts related to designing, structuring, or editing email templates.
+
+Please describe the email you want. Suggestions:
+- *"Build a classic ecommerce newsletter"*
+- *"Create a professional product update email"*
+- *"Design a minimal notification template"*`
+        };
+      }
+    }
+
+    return { isIrrelevant: false };
+  };
+
   const handleGenerate = async (
     prompt: string,
     imageBase64: string | null = null,
@@ -235,6 +345,20 @@ export default function Home() {
       sessionStorage.removeItem("ai_email_builder_is_sample");
     } catch (e) {}
 
+    // Check if prompt is vague or irrelevant (only if no image is uploaded)
+    const check = imageBase64 ? { isIrrelevant: false, response: "" } : isPromptIrrelevant(prompt);
+    if (check.isIrrelevant) {
+      const userMessageText = prompt || "Image reference";
+      setMessages(prev => {
+        const newMsgs: Message[] = [
+          { role: "user", text: userMessageText, isImage: !!imageBase64 },
+          { role: "model", text: check.response || "" },
+        ];
+        return isFresh ? newMsgs : [...prev, ...newMsgs];
+      });
+      return;
+    }
+
     track("Generate Email", { model });
     setLoadingType("generating");
     setLoading(true);
@@ -244,7 +368,10 @@ export default function Home() {
     try {
       const resp = await fetch("/api/generate", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { 
+          "Content-Type": "application/json",
+          "x-client-session-id": getClientSessionId()
+        },
         body: JSON.stringify({ prompt, imageBase64, mimeType, currentMjml: isFresh ? "" : mjml, history: isFresh ? [] : messages, model }),
       });
 
@@ -332,7 +459,10 @@ export default function Home() {
     try {
       const resp = await fetch("/api/generate-section", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { 
+          "Content-Type": "application/json",
+          "x-client-session-id": getClientSessionId()
+        },
         body: JSON.stringify({ sectionMjml, instruction, model }),
       });
 
@@ -718,6 +848,39 @@ export default function Home() {
     }
   };
 
+  const handleSendTestEmail = async () => {
+    const content = editedHtmlRef.current || htmlContent;
+    if (!content) {
+      setErrorMsg("No template content to send.");
+      return;
+    }
+
+    setIsSendingTestEmail(true);
+    setErrorMsg(null);
+    setSuccessMsg(null);
+
+    try {
+      const cleanedContent = cleanHtmlForExport(content);
+      const res = await fetch("/api/send-test-email", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ html: cleanedContent }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || "Failed to send email");
+      }
+
+      setSuccessMsg("Test email sent successfully to organdy69@gmail.com!");
+    } catch (err: unknown) {
+      console.error(err);
+      setErrorMsg(err instanceof Error ? err.message : "Failed to send test email.");
+    } finally {
+      setIsSendingTestEmail(false);
+    }
+  };
+
   const handleSelectHistory = (template: TemplateRecord) => {
     editedHtmlRef.current = "";
     setHtmlContent(template.html);
@@ -785,8 +948,11 @@ export default function Home() {
         >
           <PromptEditor
             onGenerate={(p, img, mime, model, isFresh) => {
+              const check = img ? { isIrrelevant: false } : isPromptIrrelevant(p);
               handleGenerate(p, img, mime, model, isFresh);
-              if (isMobile) setActiveTab("preview");
+              if (isMobile && !check.isIrrelevant) {
+                setActiveTab("preview");
+              }
             }}
             isLoading={loading}
             hasTemplate={!!mjml}
@@ -878,6 +1044,8 @@ export default function Home() {
           isSharing={isSharing}
           isLibraryHighlighted={isLibraryHighlighted}
           onOpenTutorial={() => setShowOnboarding(true)}
+          onSendTestEmail={handleSendTestEmail}
+          isSendingTestEmail={isSendingTestEmail}
         />
       </div>
       )}

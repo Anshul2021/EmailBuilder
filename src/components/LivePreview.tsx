@@ -53,6 +53,8 @@ interface LivePreviewProps {
     onLoadSample?: () => void;
     isLibraryHighlighted?: boolean;
     onOpenTutorial?: () => void;
+    onSendTestEmail?: () => void;
+    isSendingTestEmail?: boolean;
 }
 
 const GENERATING_MESSAGES = [
@@ -164,6 +166,8 @@ export function LivePreview({
     onLoadSample,
     isLibraryHighlighted = false,
     onOpenTutorial,
+    onSendTestEmail,
+    isSendingTestEmail,
 }: LivePreviewProps) {
     const [viewMode, setViewMode] = useState<"desktop" | "mobile">("desktop");
     const [showEditPanel, setShowEditPanel] = useState(true);
@@ -2290,6 +2294,8 @@ export function LivePreview({
                 onSimulateLoading={() => setSimulateLoading(true)}
                 isLibraryHighlighted={isLibraryHighlighted}
                 onOpenTutorial={onOpenTutorial}
+                onSendTestEmail={onSendTestEmail}
+                isSendingTestEmail={isSendingTestEmail}
             />
 
             {/* ── Section Controls Overlay ── */}

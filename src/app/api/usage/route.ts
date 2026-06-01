@@ -6,7 +6,8 @@ export const dynamic = "force-dynamic";
 export async function GET(req: NextRequest) {
     try {
         const ip = getClientIp(req);
-        const usage = getUsage(ip);
+        const clientId = req.headers.get("x-client-session-id") || undefined;
+        const usage = getUsage(ip, clientId);
         return NextResponse.json({ usage });
     } catch (error: unknown) {
         const msg = error instanceof Error ? error.message : String(error);
@@ -20,8 +21,9 @@ export async function POST(req: NextRequest) {
             return NextResponse.json({ error: "Method not allowed in production" }, { status: 403 });
         }
         const ip = getClientIp(req);
-        resetUsage(ip);
-        const usage = getUsage(ip);
+        const clientId = req.headers.get("x-client-session-id") || undefined;
+        resetUsage(ip, clientId);
+        const usage = getUsage(ip, clientId);
         return NextResponse.json({ success: true, usage });
     } catch (error: unknown) {
         const msg = error instanceof Error ? error.message : String(error);

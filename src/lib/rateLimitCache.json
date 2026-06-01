@@ -1,0 +1,24 @@
+{
+  "clientUsage": {
+    "139a763b-0359-4c4d-ba0d-ae2f431cb571": {
+      "modelCounts": {
+        "gemini-3.1-flash-lite": 1
+      },
+      "lastResetDate": "2026-06-01"
+    },
+    "2c5a6fe4-bebe-468e-90a5-5614b130c69e": {
+      "modelCounts": {},
+      "lastResetDate": "2026-06-01"
+    },
+    "d26a8730-f97c-450d-aa11-4d1c64bc65fa": {
+      "modelCounts": {},
+      "lastResetDate": "2026-06-01"
+    },
+    "127.0.0.1": {
+      "modelCounts": {
+        "gemini-3.1-flash-lite": 3
+      },
+      "lastResetDate": "2026-06-01"
+    }
+  }
+}

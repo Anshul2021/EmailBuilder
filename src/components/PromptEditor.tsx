@@ -73,7 +73,12 @@ interface PromptEditorProps {
     onToggleCollapse?: () => void;
     selectedModel: string;
     onModelChange: (model: string) => void;
-    usage: { used: number; limit: number; remaining: number } | null;
+    usage: { 
+        used: number; 
+        limit: number; 
+        remaining: number; 
+        modelCounts?: Record<string, { used: number; limit: number; remaining: number }>;
+    } | null;
     onResetUsage: () => void;
     onRestart?: () => void;
 }
@@ -567,7 +572,8 @@ export function PromptEditor({
     const [fullscreenImageUrl, setFullscreenImageUrl] = useState<string | null>(null);
     const [hasPasted, setHasPasted] = useState(false);
 
-    const limitReached = usage !== null && usage.remaining <= 0;
+    const currentModelUsage = usage?.modelCounts?.[selectedModel] || { used: 0, limit: 3, remaining: 3 };
+    const limitReached = usage !== null && currentModelUsage.remaining <= 0;
     const [placeholder, setPlaceholder] = useState("");
 
     useEffect(() => {
@@ -906,6 +912,7 @@ export function PromptEditor({
     const latestUserMessage = [...messages].reverse().find((m) => m.role === "user");
     const latestModelMessage = [...messages].reverse().find((m) => m.role === "model");
 
+    const activeModelUsage = usage?.modelCounts?.[selectedModel] || { used: 0, limit: 3, remaining: 3 };
     const usageFraction = usage ? usage.remaining / usage.limit : 1;
     const usagePillColor = usageFraction > 0.5
         ? "bg-purple-50 text-purple-700 border-purple-200"
@@ -933,10 +940,12 @@ export function PromptEditor({
 
                     <div className="flex items-center gap-2">
                         {usage && (
-                            <div className={`flex items-center gap-1.5 border rounded-full px-2.5 py-1 text-xs font-semibold ${usagePillColor}`}>
-                                <Clock className="w-3 h-3" />
-                                <span>{usage.remaining}/{usage.limit} today</span>
-                            </div>
+                            <Tooltip content="3 per model per day limit" position="bottom">
+                                <div className={`flex items-center gap-1.5 border rounded-full px-2.5 py-1 text-xs font-semibold cursor-help ${usagePillColor}`}>
+                                    <Clock className="w-3 h-3" />
+                                    <span>{usage.remaining}/{usage.limit} today</span>
+                                </div>
+                            </Tooltip>
                         )}
                         <button
                             onClick={onResetUsage}
@@ -971,7 +980,7 @@ export function PromptEditor({
                     )}
 
                     {/* Unified Premium Chat Feed using ChatContainer */}
-                    {hasTemplate && messages.length > 0 && (
+                    {messages.length > 0 && (
                         <ChatContainerRoot className="flex-grow min-h-0">
                             <ChatContainerContent className="p-1 space-y-4">
                                 {messages.map((message, i) => {
@@ -991,8 +1000,16 @@ export function PromptEditor({
                                             )}
                                             <div className="max-w-[95%] flex-1 sm:max-w-[95%]">
                                                 {isAssistant ? (
-                                                    <div className="bg-slate-100 border border-slate-100 text-slate-800 rounded-lg p-2 leading-relaxed shadow-sm">
+                                                    <div className="bg-slate-100 border border-slate-100 text-slate-800 rounded-lg p-2 leading-relaxed shadow-sm flex flex-col items-start gap-1">
                                                         <Markdown>{message.text.startsWith("<mjml>") ? "template updated successfully." : message.text}</Markdown>
+                                                        {message.text.includes("AI Email Template Builder") && onRestart && (
+                                                            <button
+                                                                onClick={onRestart}
+                                                                className="mt-2 px-3 py-2 bg-violet-600 hover:bg-violet-700 text-white rounded-lg text-xs font-bold shadow-sm transition-all"
+                                                            >
+                                                                Start from Scratch
+                                                            </button>
+                                                        )}
                                                     </div>
                                                 ) : (
                                                     <MessageContent className="bg-gray-700 text-white font-medium">

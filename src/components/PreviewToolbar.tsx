@@ -31,6 +31,12 @@ interface PreviewToolbarProps {
     onOpenTutorial?: () => void;
 }
 
+const triggerMobileHaptic = () => {
+    if (typeof window !== "undefined" && typeof navigator !== "undefined" && navigator.vibrate) {
+        navigator.vibrate(15);
+    }
+};
+
 export function PreviewToolbar({
     viewMode,
     setViewMode,
@@ -94,7 +100,8 @@ export function PreviewToolbar({
 
     return (
         <>
-            <style dangerouslySetInnerHTML={{__html: `
+            <style dangerouslySetInnerHTML={{
+                __html: `
                 .hide-scroll-bar::-webkit-scrollbar {
                     display: none !important;
                 }
@@ -113,7 +120,10 @@ export function PreviewToolbar({
                     </div>
                     {onOpenTutorial && (
                         <button
-                            onClick={onOpenTutorial}
+                            onClick={() => {
+                                triggerMobileHaptic();
+                                onOpenTutorial();
+                            }}
                             className="text-[10px] font-bold text-violet-600 hover:text-white hover:bg-violet-600 border border-violet-200 hover:border-violet-600 px-1.5 py-0.5 rounded transition-all uppercase tracking-wider bg-transparent cursor-pointer"
                         >
                             Tutorial
@@ -125,7 +135,10 @@ export function PreviewToolbar({
                     {/* Quick Undo / Redo directly on the bar for ease of editing on phone */}
                     <div className="flex items-center gap-0.5">
                         <button
-                            onClick={undo}
+                            onClick={() => {
+                                triggerMobileHaptic();
+                                undo();
+                            }}
                             disabled={undoStackLength === 0}
                             className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors disabled:opacity-20 active:scale-95"
                             title="Undo"
@@ -133,7 +146,10 @@ export function PreviewToolbar({
                             <Undo2 className="w-4 h-4" />
                         </button>
                         <button
-                            onClick={redo}
+                            onClick={() => {
+                                triggerMobileHaptic();
+                                redo();
+                            }}
                             disabled={redoStackLength === 0}
                             className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors disabled:opacity-20 active:scale-95"
                             title="Redo"
@@ -145,7 +161,10 @@ export function PreviewToolbar({
                     <div className="w-px h-4 bg-slate-200 mx-0.5" />
 
                     <button
-                        onClick={() => setShowMenu(prev => !prev)}
+                        onClick={() => {
+                            triggerMobileHaptic();
+                            setShowMenu(prev => !prev);
+                        }}
                         className={clsx(
                             "h-8 w-8 flex items-center justify-center rounded-lg border border-slate-200 bg-slate-50 text-slate-600 hover:bg-slate-100 transition-all shadow-sm active:scale-95",
                             showMenu && "bg-violet-50 text-violet-600 border-violet-200"
@@ -176,6 +195,7 @@ export function PreviewToolbar({
                                     <div className="flex items-center bg-slate-100 p-1 rounded-lg gap-1">
                                         <button
                                             onClick={() => {
+                                                triggerMobileHaptic();
                                                 setViewMode("desktop");
                                                 setShowMenu(false);
                                             }}
@@ -189,6 +209,7 @@ export function PreviewToolbar({
                                         </button>
                                         <button
                                             onClick={() => {
+                                                triggerMobileHaptic();
                                                 setViewMode("mobile");
                                                 setShowMenu(false);
                                             }}
@@ -210,6 +231,7 @@ export function PreviewToolbar({
                                     <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider px-2">Canvas Options</p>
                                     <button
                                         onClick={() => {
+                                            triggerMobileHaptic();
                                             onAddText();
                                             setShowMenu(false);
                                         }}
@@ -228,6 +250,7 @@ export function PreviewToolbar({
                                     <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider px-2">Workspace</p>
                                     <button
                                         onClick={() => {
+                                            triggerMobileHaptic();
                                             onOpenHistory?.();
                                             setShowMenu(false);
                                         }}
@@ -241,6 +264,7 @@ export function PreviewToolbar({
                                     </button>
                                     <button
                                         onClick={() => {
+                                            triggerMobileHaptic();
                                             onSaveTemplate?.();
                                             setShowMenu(false);
                                         }}
@@ -252,6 +276,7 @@ export function PreviewToolbar({
                                     </button>
                                     <button
                                         onClick={() => {
+                                            triggerMobileHaptic();
                                             onPreview();
                                             setShowMenu(false);
                                         }}
@@ -270,6 +295,7 @@ export function PreviewToolbar({
                                     <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider px-2">Export Options</p>
                                     <button
                                         onClick={() => {
+                                            triggerMobileHaptic();
                                             onDownloadHtml();
                                             setShowMenu(false);
                                         }}
@@ -280,6 +306,7 @@ export function PreviewToolbar({
                                     </button>
                                     <button
                                         onClick={() => {
+                                            triggerMobileHaptic();
                                             onDownloadEml();
                                             setShowMenu(false);
                                         }}
@@ -290,6 +317,7 @@ export function PreviewToolbar({
                                     </button>
                                     <button
                                         onClick={() => {
+                                            triggerMobileHaptic();
                                             onSharePreview();
                                             setShowMenu(false);
                                         }}
@@ -312,6 +340,7 @@ export function PreviewToolbar({
                                     <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider px-2">Danger Zone</p>
                                     <button
                                         onClick={() => {
+                                            triggerMobileHaptic();
                                             reset();
                                             setShowMenu(false);
                                         }}
@@ -379,27 +408,27 @@ export function PreviewToolbar({
 
                     <div className="flex items-center gap-1">
                         <Tooltip content="Undo (Ctrl+Z)" position="bottom">
-                            <button 
-                                onClick={undo} 
-                                disabled={undoStackLength === 0} 
+                            <button
+                                onClick={undo}
+                                disabled={undoStackLength === 0}
                                 className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors disabled:opacity-30"
                             >
                                 <Undo2 className="w-4 h-4" />
                             </button>
                         </Tooltip>
                         <Tooltip content="Redo (Ctrl+Shift+Z)" position="bottom">
-                            <button 
-                                onClick={redo} 
-                                disabled={redoStackLength === 0} 
+                            <button
+                                onClick={redo}
+                                disabled={redoStackLength === 0}
                                 className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors disabled:opacity-30"
                             >
                                 <Redo2 className="w-4 h-4" />
                             </button>
                         </Tooltip>
                         <Tooltip content="Reset All" position="bottom">
-                            <button 
-                                onClick={reset} 
-                                disabled={!html} 
+                            <button
+                                onClick={reset}
+                                disabled={!html}
                                 className="p-1.5 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 transition-colors disabled:opacity-30"
                             >
                                 <RotateCcw className="w-4 h-4" />
@@ -407,15 +436,15 @@ export function PreviewToolbar({
                         </Tooltip>
                     </div>
                     <div className="w-px h-5 bg-slate-200" />
-                    
+
                     <div className="relative flex items-center">
                         <Tooltip content="View Saved Templates" position="bottom">
-                            <button 
-                                onClick={onOpenHistory} 
+                            <button
+                                onClick={onOpenHistory}
                                 className={clsx(
                                     "flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg transition-all shadow-sm border",
-                                    isLibraryHighlighted 
-                                        ? "library-highlight-active bg-violet-50 text-violet-700 border-violet-500" 
+                                    isLibraryHighlighted
+                                        ? "library-highlight-active bg-violet-50 text-violet-700 border-violet-500"
                                         : "bg-slate-100 text-slate-600 hover:bg-slate-200 border-transparent"
                                 )}
                             >
@@ -424,11 +453,11 @@ export function PreviewToolbar({
                             </button>
                         </Tooltip>
                     </div>
-                    
+
                     <Tooltip content="Save" position="bottom">
-                        <button 
-                            onClick={onSaveTemplate} 
-                            disabled={!html} 
+                        <button
+                            onClick={onSaveTemplate}
+                            disabled={!html}
                             className="flex items-center gap-1.5 text-xs font-semibold bg-violet-100 text-violet-700 px-3 py-1.5 rounded-lg hover:bg-violet-200 transition-colors shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
                         >
                             <Save className="w-3.5 h-3.5" />
@@ -437,9 +466,9 @@ export function PreviewToolbar({
                     </Tooltip>
 
                     <Tooltip content="Clean viewport preview" position="bottom">
-                        <button 
-                            onClick={onPreview} 
-                            disabled={!html} 
+                        <button
+                            onClick={onPreview}
+                            disabled={!html}
                             className="flex items-center gap-1.5 text-xs font-semibold bg-slate-100 text-slate-600 px-3 py-1.5 rounded-lg hover:bg-slate-200 transition-colors shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
                         >
                             <Eye className="w-3.5 h-3.5" />
@@ -449,10 +478,10 @@ export function PreviewToolbar({
 
                     <div className="relative" ref={dropdownRef}>
                         <Tooltip content="Export options" position="bottom">
-                            <button 
+                            <button
                                 type="button"
-                                onClick={() => setShowExportDropdown(prev => !prev)} 
-                                disabled={!html} 
+                                onClick={() => setShowExportDropdown(prev => !prev)}
+                                disabled={!html}
                                 className="flex items-center gap-1.5 text-xs font-semibold bg-violet-600 text-white px-3 py-1.5 rounded-lg hover:bg-violet-700 transition-colors shadow-sm disabled:opacity-40 disabled:cursor-not-allowed"
                             >
                                 <Download className="w-3.5 h-3.5" />

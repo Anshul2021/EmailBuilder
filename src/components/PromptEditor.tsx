@@ -415,7 +415,7 @@ const ModelSelectorDropdown: React.FC<{
                 type="button"
                 className={cn(
                     "text-xs font-semibold text-slate-600 hover:text-slate-900 bg-slate-100 rounded-lg flex items-center gap-1.5 transition-colors select-none",
-                    size === 'md' ? "h-9 px-3.5" : "h-7 px-2"
+                    size === 'md' ? "h-9 px-3.5" : "h-9 px-3 md:h-7 md:px-2"
                 )}
                 onClick={() => setIsOpen(!isOpen)}
             >
@@ -666,14 +666,6 @@ export function PromptEditor({
     const handleFileSelect = useCallback((selectedFiles: FileList | null) => {
         if (!selectedFiles) return;
 
-        // Set default prompt if prompt is currently empty
-        setPrompt((prev) => {
-            if (!prev.trim()) {
-                return "Generate this exact email template in a nice professional looking way, make sure nothing is missed everything should be exactly as it is, but for images only use text placeholders, and use DM Sans font";
-            }
-            return prev;
-        });
-
         // Revoke URLs for existing files to prevent memory leaks, then clear them to enforce a single-file limit
         setFiles((prev) => {
             prev.forEach((f) => {
@@ -704,6 +696,7 @@ export function PromptEditor({
 
         // Initialize state with the new file
         setFiles([newFile]);
+        setHasPasted(true);
 
         // Process textual file reading
         if (isTextualFile(newFile.file)) {
@@ -1255,7 +1248,7 @@ export function PromptEditor({
                                                 <div className="flex items-center gap-1">
                                                     <button
                                                         type="button"
-                                                        className="h-7 w-7 rounded-lg flex items-center justify-center text-slate-400 hover:text-slate-600 hover:bg-slate-50 flex-shrink-0 transition-colors"
+                                                        className="h-9 w-9 md:h-7 md:w-7 rounded-lg flex items-center justify-center text-slate-400 hover:text-slate-600 hover:bg-slate-50 flex-shrink-0 transition-colors"
                                                         onClick={() => fileInputRef.current?.click()}
                                                         disabled={isLoading || limitReached || files.length >= MAX_FILES}
                                                         title={
@@ -1264,7 +1257,7 @@ export function PromptEditor({
                                                                 : "Attach image"
                                                         }
                                                     >
-                                                        <ImageIcon className="h-4 w-4" />
+                                                        <ImageIcon className="h-5 w-5 md:h-4 md:w-4" />
                                                     </button>
                                                 </div>
 
@@ -1280,7 +1273,7 @@ export function PromptEditor({
                                                     <button
                                                         type="button"
                                                         className={cn(
-                                                            "h-7 w-7 flex items-center justify-center flex-shrink-0 rounded-lg transition-all shadow-sm",
+                                                            "h-9 w-9 md:h-7 md:w-7 flex items-center justify-center flex-shrink-0 rounded-lg transition-all shadow-sm",
                                                             canSend
                                                                 ? "bg-violet-600 hover:bg-violet-700 text-white hover:scale-[1.02] active:scale-[0.98]"
                                                                 : "bg-slate-100 text-slate-300 cursor-not-allowed shadow-none"
@@ -1290,9 +1283,9 @@ export function PromptEditor({
                                                         title="Send message"
                                                     >
                                                         {isLoading ? (
-                                                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                                            <Loader2 className="h-4 w-4 md:h-3.5 md:w-3.5 animate-spin" />
                                                         ) : (
-                                                            <ArrowUp className="h-3.5 w-3.5 stroke-[2.5]" />
+                                                            <ArrowUp className="h-4.5 w-4.5 md:h-3.5 md:w-3.5 stroke-[2.5]" />
                                                         )}
                                                     </button>
                                                 </div>

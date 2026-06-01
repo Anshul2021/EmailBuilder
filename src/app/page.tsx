@@ -54,6 +54,12 @@ export default function Home() {
   const [isMobile, setIsMobile] = useState(false);
   const [activeTab, setActiveTab] = useState<"editor" | "preview">("editor");
 
+  const triggerMobileHaptic = () => {
+    if (typeof window !== "undefined" && typeof navigator !== "undefined" && navigator.vibrate) {
+      navigator.vibrate(15);
+    }
+  };
+
   useEffect(() => {
     const handleResize = () => {
       setIsMobile(window.innerWidth < 768);
@@ -721,12 +727,15 @@ export default function Home() {
   };
 
   return (
-    <div className="flex flex-col h-screen w-full overflow-hidden bg-[#f5f7fa]">
+    <div className="flex flex-col h-[100dvh] w-full overflow-hidden bg-[#f5f7fa]">
       {/* Mobile Tab Switcher */}
       {isMobile && (
         <div className="bg-white border-b border-slate-200 h-12 flex shrink-0 z-[90] shadow-sm w-full">
           <button
-            onClick={() => setActiveTab("editor")}
+            onClick={() => {
+              triggerMobileHaptic();
+              setActiveTab("editor");
+            }}
             className={`flex-1 flex items-center justify-center text-xs font-bold transition-all border-r border-slate-100 uppercase tracking-wider ${
               activeTab === "editor"
                 ? "text-violet-600 bg-violet-50/40 font-bold border-b-2 border-b-violet-600"
@@ -736,7 +745,10 @@ export default function Home() {
             Prompt Bar
           </button>
           <button
-            onClick={() => setActiveTab("preview")}
+            onClick={() => {
+              triggerMobileHaptic();
+              setActiveTab("preview");
+            }}
             className={`flex-1 flex items-center justify-center text-xs font-bold transition-all uppercase tracking-wider ${
               activeTab === "preview"
                 ? "text-violet-600 bg-violet-50/40 font-bold border-b-2 border-b-violet-600"

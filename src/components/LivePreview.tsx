@@ -1048,30 +1048,30 @@ export function LivePreview({
         const handleMainKeyDown = (e: KeyboardEvent) => {
             const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0;
             const modifier = isMac ? e.metaKey : e.ctrlKey;
-            
+
             // Undo: Ctrl+Z / Cmd+Z
             if (modifier && e.key.toLowerCase() === "z" && !e.shiftKey) {
                 const active = document.activeElement;
                 const isInput = active && (active.tagName === "INPUT" || active.tagName === "TEXTAREA" || active.hasAttribute("contenteditable"));
-                
+
                 if (!isInput || active.classList.contains("ql-editor")) {
                     e.preventDefault();
                     undo();
                 }
             }
-            
+
             // Redo: Ctrl+Y / Cmd+Y / Ctrl+Shift+Z / Cmd+Shift+Z
             if ((modifier && e.key.toLowerCase() === "y") || (modifier && e.shiftKey && e.key.toLowerCase() === "z")) {
                 const active = document.activeElement;
                 const isInput = active && (active.tagName === "INPUT" || active.tagName === "TEXTAREA" || active.hasAttribute("contenteditable"));
-                
+
                 if (!isInput || active.classList.contains("ql-editor")) {
                     e.preventDefault();
                     redo();
                 }
             }
         };
-        
+
         window.addEventListener("keydown", handleMainKeyDown);
         return () => {
             window.removeEventListener("keydown", handleMainKeyDown);
@@ -1494,7 +1494,7 @@ export function LivePreview({
             // Handle block drag move
             if (isBlockDraggingRef.current && ghostElementRef.current && dragTargetRef.current) {
                 e.preventDefault();
-                
+
                 const touch = e.touches[0];
                 const ghost = ghostElementRef.current;
                 const offsetX = (ghost as unknown as { _offsetX: number })._offsetX || 0;
@@ -1598,7 +1598,7 @@ export function LivePreview({
                             targetImg.removeAttribute("style");
                         }
                         propagateChanges();
-                        
+
                         // Select the element to update panel states
                         targetImg.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
                     }
@@ -1880,9 +1880,9 @@ export function LivePreview({
             if (text) {
                 const target = e.target as HTMLElement;
                 if (target && (
-                    target.tagName === "INPUT" || 
-                    target.tagName === "TEXTAREA" || 
-                    target.hasAttribute("contenteditable") || 
+                    target.tagName === "INPUT" ||
+                    target.tagName === "TEXTAREA" ||
+                    target.hasAttribute("contenteditable") ||
                     target.closest('[contenteditable="true"]') ||
                     target.closest('.ql-editor')
                 )) {
@@ -2110,14 +2110,14 @@ export function LivePreview({
             const dataUrl = ev.target?.result as string;
             if (dataUrl && targetImg) {
                 targetImg.src = dataUrl;
-                
+
                 let widthPercent = 100;
                 if (hasWidth && typeof hasWidth === "string" && hasWidth.endsWith("%")) {
                     widthPercent = parseInt(hasWidth);
                 }
 
-                setSelectedProps(prev => ({ 
-                    ...prev, 
+                setSelectedProps(prev => ({
+                    ...prev,
                     src: dataUrl,
                     width: widthPercent,
                     objectFit: "cover"
@@ -2257,9 +2257,8 @@ export function LivePreview({
                             }
                             setShowEditPanel(true);
                         }}
-                        className={`flex items-center gap-2 px-6 py-3 bg-violet-600 hover:bg-violet-700 text-white rounded-full shadow-2xl border border-violet-500 font-bold text-xs tracking-wider uppercase active:scale-95 transition-all ${
-                            !hasTilted ? "animate-tilt-shake" : ""
-                        }`}
+                        className={`flex items-center gap-2 px-6 py-3 bg-violet-600 hover:bg-violet-700 text-white rounded-full shadow-2xl border border-violet-500 font-bold text-xs tracking-wider uppercase active:scale-95 transition-all ${!hasTilted ? "animate-tilt-shake" : ""
+                            }`}
                     >
                         <PencilLine className="w-4 h-4" />
                         <span>Edit {selectedProps.isImage ? "Image" : "Text"} & Style</span>
@@ -2362,7 +2361,7 @@ export function LivePreview({
                         {(isLoading || simulateLoading) && (
                             <div className="absolute inset-0 z-40 flex flex-col items-center justify-center bg-white/95 backdrop-blur-[2px] animate-fade-in p-8 text-center gap-6 select-none rounded-[32px] overflow-hidden">
                                 <div className="absolute -inset-10 bg-gradient-to-tr from-violet-500/5 via-fuchsia-500/5 to-cyan-500/5 blur-3xl opacity-70 pointer-events-none" />
-                                
+
                                 <div className="relative w-96 h-96 flex items-center justify-center">
                                     <img
                                         src={HandLoading.src}
@@ -2371,10 +2370,10 @@ export function LivePreview({
                                     />
                                 </div>
 
-                                <div className="space-y-2.5 max-w-md" style={{position: "absolute",top:"440px",left:"50%",transform: "translateX(-50%)"}}>
+                                <div className="space-y-2.5 max-w-md" style={{ position: "absolute", top: "440px", left: "50%", transform: "translateX(-50%)" }}>
                                     <p className="text-sm text-slate-500 leading-relaxed font-medium transition-all duration-300">
-                                        {loadingType === "saving" 
-                                            ? SAVING_MESSAGES[creativeMessageIndex] 
+                                        {loadingType === "saving"
+                                            ? SAVING_MESSAGES[creativeMessageIndex]
                                             : GENERATING_MESSAGES[creativeMessageIndex]}
                                     </p>
                                 </div>
@@ -2453,8 +2452,11 @@ export function LivePreview({
                             <button
                                 onClick={() => setShowEditPanel(false)}
                                 className={clsx(
-                                    "absolute z-30 flex items-center justify-center w-8 h-8 rounded-full bg-white border border-slate-200 shadow-md text-slate-400 hover:text-slate-700 hover:border-slate-300 transition-all",
-                                    isMobile ? "right-4 top-4" : "-left-4 top-1/2"
+                                    "absolute z-30 flex items-center justify-center w-8 h-8 rounded-full border shadow-md transition-all",
+                                    isMobile 
+                                        ? "right-4 top-[-40px] bg-rose-50 border-rose-200 text-rose-500 hover:bg-rose-100 hover:text-rose-700 hover:border-rose-300" 
+                                        : "bg-white border-slate-200 text-slate-400 hover:text-slate-700 hover:border-slate-300",
+                                    !isMobile && "-left-4 top-1/2"
                                 )}
                                 style={isMobile ? undefined : { transform: "translateY(-50%)" }}
                                 title="Collapse panel"

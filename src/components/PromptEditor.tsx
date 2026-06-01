@@ -79,7 +79,6 @@ interface PromptEditorProps {
         remaining: number; 
         modelCounts?: Record<string, { used: number; limit: number; remaining: number }>;
     } | null;
-    onResetUsage: () => void;
     onRestart?: () => void;
 }
 
@@ -561,7 +560,6 @@ export function PromptEditor({
     selectedModel,
     onModelChange,
     usage,
-    onResetUsage,
     onRestart,
 }: PromptEditorProps) {
     const [prompt, setPrompt] = useState("");
@@ -941,19 +939,12 @@ export function PromptEditor({
                     <div className="flex items-center gap-2">
                         {usage && (
                             <Tooltip content="3 per model per day limit" position="bottom">
-                                <div className={`flex items-center gap-1.5 border rounded-full px-2.5 py-1 text-xs font-semibold cursor-help ${usagePillColor}`}>
+                                <div className={`flex items-center gap-1.5 border rounded-lg px-2.5 py-1 text-xs font-semibold cursor-help ${usagePillColor}`}>
                                     <Clock className="w-3 h-3" />
                                     <span>{usage.remaining}/{usage.limit} today</span>
                                 </div>
                             </Tooltip>
                         )}
-                        <button
-                            onClick={onResetUsage}
-                            className="text-[10px] font-bold text-violet-600 hover:text-white border border-violet-200 hover:border-violet-600 hover:bg-violet-600 px-2 py-1 rounded-lg transition-all"
-                            title="Reset daily model generation limits"
-                        >
-                            Reset Limits
-                        </button>
                     </div>
                 </div>
 

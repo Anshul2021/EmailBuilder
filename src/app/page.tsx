@@ -13,6 +13,7 @@ import { PreviewModal } from "@/components/PreviewModal";
 import { SaveTemplateModal } from "@/components/SaveTemplateModal";
 import { BugReportModal } from "@/components/BugReportModal";
 import { OnboardingModal } from "@/components/OnboardingModal";
+import { SendTestEmailModal } from "@/components/SendTestEmailModal";
 import { Tooltip } from "@/components/UI/Tooltip";
 import { saveTemplate, TemplateRecord } from "@/lib/supabaseService";
 import { getSection, replaceMjmlSection } from "@/lib/mjmlParser";
@@ -65,6 +66,11 @@ export default function Home() {
   const [isLibraryHighlighted, setIsLibraryHighlighted] = useState(false);
   const [showBugModal, setShowBugModal] = useState(false);
   const [showOnboarding, setShowOnboarding] = useState(false);
+  const [isOnboardedIp, setIsOnboardedIp] = useState(false);
+  const [userName, setUserName] = useState("");
+  const [userContact, setUserContact] = useState("");
+  const [forceShowContact, setForceShowContact] = useState(false);
+  const [showTestEmailModal, setShowTestEmailModal] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
   const [activeTab, setActiveTab] = useState<"editor" | "preview">("editor");
 
@@ -85,14 +91,40 @@ export default function Home() {
 
   // Show onboarding modal on mount if not onboarded yet
   useEffect(() => {
-    try {
-      const onboarded = localStorage.getItem("ai_email_builder_onboarded");
-      if (onboarded !== "true") {
-        setShowOnboarding(true);
+    const checkOnboardingStatus = async () => {
+      try {
+        const res = await fetch("/api/onboarding");
+        if (res.ok) {
+          const data = await res.json();
+          if (data.onboarded) {
+            setIsOnboardedIp(true);
+            setUserName(data.name || "");
+            setUserContact(data.contact_info || "");
+            localStorage.setItem("ai_email_builder_onboarded", "true");
+          } else {
+            setIsOnboardedIp(false);
+            setUserName("");
+            setUserContact("");
+            localStorage.removeItem("ai_email_builder_onboarded");
+            setShowOnboarding(true);
+          }
+        } else {
+          // Fallback if API fails
+          const onboarded = localStorage.getItem("ai_email_builder_onboarded");
+          if (onboarded !== "true") {
+            setShowOnboarding(true);
+          }
+        }
+      } catch (e) {
+        console.warn("Failed to check onboarding status:", e);
+        // Fallback if fetch fails
+        const onboarded = localStorage.getItem("ai_email_builder_onboarded");
+        if (onboarded !== "true") {
+          setShowOnboarding(true);
+        }
       }
-    } catch (e) {
-      console.warn(e);
-    }
+    };
+    checkOnboardingStatus();
   }, []);
 
   // Restore editor state from sessionStorage on initial load
@@ -172,21 +204,7 @@ export default function Home() {
       .catch((err) => console.error("Error fetching usage:", err));
   }, []);
 
-  const handleResetUsage = async () => {
-    try {
-      const res = await fetch("/api/usage", {
-        method: "POST",
-        headers: { "x-client-session-id": getClientSessionId() }
-      });
-      const data = await res.json();
-      if (data.usage) {
-        setUsage(data.usage);
-        setSuccessMsg("Beta usage count reset successfully!");
-      }
-    } catch (err) {
-      console.error("Error resetting usage:", err);
-    }
-  };
+
 
   // Auto-clear success messages after 5 seconds
   useEffect(() => {
@@ -1227,7 +1245,7 @@ Please describe the email you want. Suggestions:
     }
   };
 
-  const handleSendTestEmail = async () => {
+  const handleSendTestEmail = async (recipientEmail: string) => {
     const content = editedHtmlRef.current || htmlContent;
     if (!content) {
       setErrorMsg("No template content to send.");
@@ -1243,7 +1261,7 @@ Please describe the email you want. Suggestions:
       const res = await fetch("/api/send-test-email", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ html: cleanedContent }),
+        body: JSON.stringify({ html: cleanedContent, to: recipientEmail }),
       });
 
       const data = await res.json();
@@ -1251,7 +1269,8 @@ Please describe the email you want. Suggestions:
         throw new Error(data.error || "Failed to send email");
       }
 
-      setSuccessMsg("Test email sent successfully to organdy69@gmail.com!");
+      setSuccessMsg(`Test email sent successfully to ${recipientEmail}!`);
+      setShowTestEmailModal(false);
     } catch (err: unknown) {
       console.error(err);
       setErrorMsg(err instanceof Error ? err.message : "Failed to send test email.");
@@ -1339,7 +1358,6 @@ Please describe the email you want. Suggestions:
               selectedModel={selectedModel}
               onModelChange={setSelectedModel}
               usage={usage}
-              onResetUsage={handleResetUsage}
               onRestart={handleRestart}
             />
           </motion.div>
@@ -1418,8 +1436,14 @@ Please describe the email you want. Suggestions:
               isSharing={isSharing}
               isLibraryHighlighted={isLibraryHighlighted}
               onOpenTutorial={() => setShowOnboarding(true)}
-              onSendTestEmail={handleSendTestEmail}
+              onSendTestEmail={() => setShowTestEmailModal(true)}
               isSendingTestEmail={isSendingTestEmail}
+              userName={userName}
+              userContact={userContact}
+              onOpenProfile={() => {
+                setForceShowContact(true);
+                setShowOnboarding(true);
+              }}
             />
           </div>
         )}
@@ -1477,7 +1501,28 @@ Please describe the email you want. Suggestions:
       {/* Onboarding Modal */}
       <OnboardingModal
         isOpen={showOnboarding}
-        onClose={() => setShowOnboarding(false)}
+        onClose={() => {
+          setShowOnboarding(false);
+          setForceShowContact(false);
+          localStorage.setItem("ai_email_builder_onboarded", "true");
+        }}
+        startWithTutorial={isOnboardedIp && !forceShowContact}
+        onRegistrationSuccess={(name, contact) => {
+          setIsOnboardedIp(true);
+          setUserName(name);
+          setUserContact(contact);
+        }}
+        readOnly={userName.trim() !== "" && userContact.trim() !== ""}
+        initialName={userName}
+        initialContact={userContact}
+      />
+
+      {/* Send Test Email Modal */}
+      <SendTestEmailModal
+        isOpen={showTestEmailModal}
+        onClose={() => setShowTestEmailModal(false)}
+        onSend={handleSendTestEmail}
+        isLoading={isSendingTestEmail}
       />
     </div>
   );

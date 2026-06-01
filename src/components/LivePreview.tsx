@@ -55,6 +55,9 @@ interface LivePreviewProps {
     onOpenTutorial?: () => void;
     onSendTestEmail?: () => void;
     isSendingTestEmail?: boolean;
+    userName?: string;
+    userContact?: string;
+    onOpenProfile?: () => void;
 }
 
 const GENERATING_MESSAGES = [
@@ -168,6 +171,9 @@ export function LivePreview({
     onOpenTutorial,
     onSendTestEmail,
     isSendingTestEmail,
+    userName = "",
+    userContact = "",
+    onOpenProfile,
 }: LivePreviewProps) {
     const [viewMode, setViewMode] = useState<"desktop" | "mobile">("desktop");
     const [showEditPanel, setShowEditPanel] = useState(true);
@@ -2296,6 +2302,9 @@ export function LivePreview({
                 onOpenTutorial={onOpenTutorial}
                 onSendTestEmail={onSendTestEmail}
                 isSendingTestEmail={isSendingTestEmail}
+                userName={userName}
+                userContact={userContact}
+                onOpenProfile={onOpenProfile}
             />
 
             {/* ── Section Controls Overlay ── */}
@@ -2365,7 +2374,7 @@ export function LivePreview({
                         )}
 
                         {(isLoading || simulateLoading) && (
-                            <div className="absolute inset-0 z-40 flex flex-col items-center justify-center bg-white/95 backdrop-blur-[2px] animate-fade-in p-8 text-center gap-6 select-none rounded-[32px] overflow-hidden">
+                            <div className="absolute inset-0 z-40 flex flex-col items-center justify-center bg-white/95 backdrop-blur-[2px] animate-fade-in p-8 text-center gap-6 select-none rounded-lg overflow-hidden">
                                 <div className="absolute -inset-10 bg-gradient-to-tr from-violet-500/5 via-fuchsia-500/5 to-cyan-500/5 blur-3xl opacity-70 pointer-events-none" />
 
                                 <div className="relative w-96 h-96 flex items-center justify-center">

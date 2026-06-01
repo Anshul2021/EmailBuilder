@@ -92,14 +92,14 @@ export function BugReportModal({ isOpen, onClose }: BugReportModalProps) {
 
                                     <div className="space-y-1">
                                         <label htmlFor="person-name" className="text-sm font-medium text-slate-600">
-                                            Your Name
+                                            Contact Info (Name, Email or Phone)
                                         </label>
                                         <input
                                             id="person-name"
                                             type="text"
                                             value={personName}
                                             onChange={(e) => setPersonName(e.target.value)}
-                                            placeholder="Enter your name..."
+                                            placeholder="Enter name, email, contact..."
                                             disabled={isLoading}
                                             className="w-full px-3 py-2 text-sm border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-rose-500/20 focus:border-rose-500 bg-slate-50/50 transition-all placeholder:text-slate-400 text-slate-800"
                                         />

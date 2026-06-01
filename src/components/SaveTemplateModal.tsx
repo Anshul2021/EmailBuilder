@@ -57,7 +57,7 @@ export function SaveTemplateModal({
 
         {/* Form Body */}
         <form onSubmit={handleSubmit} className="p-6 space-y-4">
-          <div className="space-y-1.5">
+          <div className="space-y-2">
             <label className="text-xs font-semibold text-slate-500">Template Name</label>
             <input
               type="text"

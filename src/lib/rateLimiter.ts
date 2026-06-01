@@ -2,8 +2,8 @@ import { NextRequest } from "next/server";
 import Redis from "ioredis";
 
 // Initialize Redis client using REDIS_URL environment variable
-const redisUrl = process.env.REDIS_URL || "redis://default:lEq6f5oJUuUK90cAmJLBDhWuhnKVFihY@leg-true-dogs-42920.db.redis.io:10665";
-const redis = new Redis(redisUrl);
+const redisUrl = process.env.REDIS_URL || "redis://localhost:6379";
+export const redis = new Redis(redisUrl);
 
 export interface IPUsage {
     modelCounts: Record<string, number>;
@@ -102,5 +102,63 @@ export async function resetUsage(ip: string, clientId?: string) {
         await redis.del(key);
     } catch (e) {
         console.error("[Rate Limiter] Redis delete error:", e);
+    }
+}
+
+function getStartOfWeekString(): string {
+    const now = new Date();
+    const day = now.getDay(); // 0 is Sunday, 1 is Monday, etc.
+    const diff = now.getDate() - day + (day === 0 ? -6 : 1); // adjust to Monday
+    const startOfWeek = new Date(now.setDate(diff));
+    return startOfWeek.toISOString().split("T")[0]; // YYYY-MM-DD
+}
+
+export async function getTestEmailUsage(ip: string) {
+    const startOfWeek = getStartOfWeekString();
+    const key = `test_email:${ip}:${startOfWeek}`;
+    const whitelistKey = `whitelist:${ip}`;
+    
+    let limit = 3;
+    let used = 0;
+    
+    try {
+        // Fetch whitelist custom limit if exists
+        const customLimitStr = await redis.get(whitelistKey);
+        if (customLimitStr) {
+            const parsed = parseInt(customLimitStr, 10);
+            if (!isNaN(parsed)) {
+                limit = parsed;
+            }
+        }
+        
+        // Fetch current usage
+        const usageStr = await redis.get(key);
+        if (usageStr) {
+            used = parseInt(usageStr, 10) || 0;
+        }
+    } catch (e) {
+        console.error("[Rate Limiter] Redis test email usage fetch error:", e);
+    }
+    
+    return {
+        used,
+        limit,
+        remaining: Math.max(0, limit - used)
+    };
+}
+
+export async function incrementTestEmailUsage(ip: string): Promise<number> {
+    const startOfWeek = getStartOfWeekString();
+    const key = `test_email:${ip}:${startOfWeek}`;
+    try {
+        const count = await redis.incr(key);
+        if (count === 1) {
+            // Set 7-day TTL if this is the first email sent in the week
+            await redis.expire(key, 7 * 24 * 60 * 60); // 7 days in seconds
+        }
+        return count;
+    } catch (e) {
+        console.error("[Rate Limiter] Redis test email increment error:", e);
+        return 0;
     }
 }

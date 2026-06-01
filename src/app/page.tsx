@@ -63,6 +63,18 @@ export default function Home() {
     return () => window.removeEventListener("resize", handleResize);
   }, []);
 
+  // Show onboarding modal on mount if not onboarded yet
+  useEffect(() => {
+    try {
+      const onboarded = localStorage.getItem("ai_email_builder_onboarded");
+      if (onboarded !== "true") {
+        setShowOnboarding(true);
+      }
+    } catch (e) {
+      console.warn(e);
+    }
+  }, []);
+
   // Restore editor state from sessionStorage on initial load
   useEffect(() => {
     try {
@@ -894,7 +906,7 @@ export default function Home() {
         <Tooltip content="Report a bug" position="left">
           <button
             onClick={() => setShowBugModal(true)}
-            className="fixed z-[80] w-12 h-12 bg-rose-500 hover:bg-rose-600 text-white rounded-full flex items-center justify-center shadow-lg hover:shadow-xl transition-all duration-300 active:scale-95 group hover:rotate-6 border border-rose-400 right-6 bottom-6"
+            className="fixed z-[80] w-12 h-12 bg-rose-50 hover:bg-rose-100 text-rose-500 rounded-full flex items-center justify-center shadow-lg hover:shadow-xl transition-all duration-300 active:scale-95 group hover:rotate-6 border border-rose-200 right-6 bottom-6"
             style={{ transitionTimingFunction: "cubic-bezier(0.34, 1.56, 0.64, 1)" }}
           >
             <Bug className="w-5.5 h-5.5 transition-transform duration-300 group-hover:scale-110" />

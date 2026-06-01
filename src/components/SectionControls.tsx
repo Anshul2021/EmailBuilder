@@ -67,7 +67,7 @@ export function SectionControls({
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.9, y: -4 }}
             transition={{ duration: 0.15, ease: "easeOut" }}
-            className="fixed z-[9998] flex items-center gap-0.5 bg-white rounded-lg border border-slate-200 shadow-lg px-1.5 py-1"
+            className="fixed z-[9998] hidden md:flex items-center gap-0.5 bg-white rounded-lg border border-slate-200 shadow-lg px-1.5 py-1"
             style={{ top: position.top, right: position.right }}
         >
             {actions.map((action) => (

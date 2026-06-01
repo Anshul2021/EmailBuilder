@@ -105,7 +105,7 @@ export function PreviewToolbar({
             `}} />
 
             {/* ── MOBILE TOOLBAR (Pure CSS Responsive: visible on < md viewports) ── */}
-            <div className="flex md:hidden border-b border-slate-200 bg-white items-center justify-between px-4 shrink-0 shadow-sm relative w-full select-none" style={{ height: 52 }}>
+            <div className="flex md:hidden border-b border-slate-200 bg-white items-center justify-between px-4 shrink-0 shadow-sm relative z-30 w-full select-none" style={{ height: 52 }}>
                 <div className="flex items-center gap-2 text-sm font-semibold text-slate-700 shrink-0">
                     <div className="flex items-center gap-1.5">
                         <MailOpen className="w-4 h-4 text-violet-500" />
@@ -329,7 +329,7 @@ export function PreviewToolbar({
             </div>
 
             {/* ── DESKTOP TOOLBAR (Pure CSS Responsive: visible on md and up viewports) ── */}
-            <div className="hidden md:flex border-b border-slate-200 bg-white items-center justify-between px-5 shrink-0 shadow-sm overflow-x-auto hide-scroll-bar gap-4 select-none w-full min-w-0" style={{ height: 52 }}>
+            <div className="hidden md:flex border-b border-slate-200 bg-white items-center justify-between px-5 shrink-0 shadow-sm relative z-30 gap-4 select-none w-full min-w-0" style={{ height: 52 }}>
                 <div className="flex items-center gap-3 text-sm font-semibold text-slate-700 shrink-0">
                     <div className="flex items-center gap-2">
                         <MailOpen className="w-4 h-4 text-violet-500" />

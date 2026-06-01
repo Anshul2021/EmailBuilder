@@ -3,9 +3,9 @@
 import { useState, useEffect } from "react";
 import { X, ChevronRight, ChevronLeft, Sparkles, Check } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
-import Image1 from "@/Assets/01.png";
-import Image2 from "@/Assets/02.png";
-import Image3 from "@/Assets/03.png";
+import Image1 from "@/Assets/01.webp";
+import Image2 from "@/Assets/02.webp";
+import Image3 from "@/Assets/03.webp";
 
 interface OnboardingModalProps {
     isOpen: boolean;

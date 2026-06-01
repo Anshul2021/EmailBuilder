@@ -114,7 +114,7 @@ export function BugReportModal({ isOpen, onClose }: BugReportModalProps) {
                                             rows={4}
                                             value={description}
                                             onChange={(e) => setDescription(e.target.value)}
-                                            placeholder="What happened? Please describe the steps to reproduce or any error messages..."
+                                            placeholder="What happened? Please describe the issue..."
                                             disabled={isLoading}
                                             className="w-full px-3 py-2 text-sm border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-rose-500/20 focus:border-rose-500 bg-slate-50/50 transition-all placeholder:text-slate-400 text-slate-800 resize-none custom-scrollbar"
                                         />

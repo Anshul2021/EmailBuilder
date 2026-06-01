@@ -375,3 +375,7 @@
   box-shadow: 0 0 15px rgba(124, 58, 237, 0.6) !important;
   position: relative;
 }
+
+.animate-tilt-shake {
+  animation: tiltShake 0.4s ease-in-out;
+}

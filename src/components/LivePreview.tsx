@@ -173,6 +173,22 @@ export function LivePreview({
     const [simulateLoading, setSimulateLoading] = useState(false);
     const [creativeMessageIndex, setCreativeMessageIndex] = useState(0);
     const [isMobile, setIsMobile] = useState(false);
+    const isMobileRef = useRef(isMobile);
+    const [isShaking, setIsShaking] = useState(false);
+    const [hasTilted, setHasTilted] = useState(false);
+
+    useEffect(() => {
+        isMobileRef.current = isMobile;
+    }, [isMobile]);
+
+    useEffect(() => {
+        if (hasSelection && !showEditPanel && !hasTilted && isMobile) {
+            const timer = setTimeout(() => {
+                setHasTilted(true);
+            }, 800);
+            return () => clearTimeout(timer);
+        }
+    }, [hasSelection, showEditPanel, hasTilted, isMobile]);
 
     useEffect(() => {
         const handleResize = () => {
@@ -254,10 +270,54 @@ export function LivePreview({
         setRedoStack([]);
     }, []);
 
+    const isEditingRef = useRef(false);
+    const preEditHtmlRef = useRef<string | null>(null);
+    const commitTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+    const commitEditing = useCallback(() => {
+        if (commitTimeoutRef.current) {
+            clearTimeout(commitTimeoutRef.current);
+            commitTimeoutRef.current = null;
+        }
+        if (isEditingRef.current && preEditHtmlRef.current) {
+            const doc = iframeRef.current?.contentDocument;
+            if (doc) {
+                const currentHtml = doc.documentElement.outerHTML;
+                if (currentHtml !== preEditHtmlRef.current) {
+                    const htmlToSave = preEditHtmlRef.current;
+                    setUndoStack(prev => {
+                        if (prev.length > 0 && prev[prev.length - 1] === htmlToSave) return prev;
+                        return [...prev, htmlToSave].slice(-50);
+                    });
+                    setRedoStack([]);
+                }
+            }
+            isEditingRef.current = false;
+            preEditHtmlRef.current = null;
+        }
+    }, []);
+
+    const registerChange = useCallback(() => {
+        if (!isEditingRef.current) {
+            isEditingRef.current = true;
+            const doc = iframeRef.current?.contentDocument;
+            if (doc) {
+                preEditHtmlRef.current = doc.documentElement.outerHTML;
+            }
+        }
+
+        if (commitTimeoutRef.current) {
+            clearTimeout(commitTimeoutRef.current);
+        }
+        commitTimeoutRef.current = setTimeout(commitEditing, 800);
+    }, [commitEditing]);
+
     // Resizing state
     const isResizingRef = useRef(false);
     const resizeStartXRef = useRef(0);
     const resizeStartWidthRef = useRef(0);
+    const resizeStartYRef = useRef(0);
+    const resizeStartHeightRef = useRef(0);
     const resizeTargetRef = useRef<HTMLImageElement | null>(null);
 
     // Dragging state inside iframe (Block Reordering)
@@ -402,6 +462,10 @@ export function LivePreview({
             if (props.borderRadius !== undefined) img.style.borderRadius = typeof props.borderRadius === 'number' ? `${props.borderRadius}px` : (props.borderRadius || "");
             img.style.objectFit = props.objectFit || "cover";
         } else {
+            if (props.width !== undefined) {
+                el.style.width = typeof props.width === 'number' ? `${props.width}%` : props.width;
+                el.setAttribute("width", typeof props.width === 'number' ? `${props.width}%` : props.width);
+            }
             if (props.fontSize) el.style.fontSize = typeof props.fontSize === 'number' ? `${props.fontSize}px` : props.fontSize;
             if (props.fontWeight) el.style.fontWeight = props.fontWeight;
             if (props.color) el.style.color = props.color;
@@ -452,8 +516,11 @@ export function LivePreview({
                 img {
                     cursor: pointer !important;
                     transition: outline 0.15s ease, filter 0.15s ease;
-                    display: inline-block;
-                    object-fit: cover;
+                    display: block !important;
+                    width: 100% !important;
+                    height: 100% !important;
+                    min-height: 100% !important;
+                    object-fit: cover !important;
                 }
                 p:hover, h1:hover, h2:hover, h3:hover, h4:hover, h5:hover, h6:hover, td:hover, tr:hover, table:hover, tbody:hover, div:hover, span:hover, a:hover {
                     outline: 1px dashed #c4b5fd !important;
@@ -637,9 +704,18 @@ export function LivePreview({
                     box-shadow: 0 2px 6px rgba(124,58,237,0.4);
                     display: none;
                     transition: transform 0.15s ease;
+                    touch-action: none !important;
                 }
                 .ag-resize-handle:hover {
                     transform: scale(1.2);
+                }
+                .ag-resize-handle::after {
+                    content: '';
+                    position: absolute;
+                    top: -15px;
+                    left: -15px;
+                    right: -15px;
+                    bottom: -15px;
                 }
                 .ag-drag-handle {
                     position: absolute;
@@ -656,6 +732,7 @@ export function LivePreview({
                     align-items: center;
                     justify-content: center;
                     transition: background 0.15s ease, transform 0.15s ease, box-shadow 0.15s ease;
+                    touch-action: none !important;
                 }
                 .ag-drag-handle:hover {
                     background: #6d28d9;
@@ -690,10 +767,10 @@ export function LivePreview({
                 .ag-drag-handle::after, .ag-edit-handle::after, .ag-delete-handle::after {
                     content: '';
                     position: absolute;
-                    top: -10px;
-                    left: -10px;
-                    right: -10px;
-                    bottom: -10px;
+                    top: -15px;
+                    left: -15px;
+                    right: -15px;
+                    bottom: -15px;
                 }
                 .ag-drop-indicator {
                     position: absolute;
@@ -742,6 +819,7 @@ export function LivePreview({
                     border-radius: 4px !important;
                     outline: 2px solid rgba(124,58,237,0.4) !important;
                     outline-offset: 2px !important;
+                    touch-action: none !important;
                 }
                 html::-webkit-scrollbar, body::-webkit-scrollbar, *::-webkit-scrollbar { 
                     display: none !important; width: 0 !important; height: 0 !important;
@@ -889,7 +967,8 @@ export function LivePreview({
                 editHandle.style.display = "none";
             }
 
-            if (resizeHandle && el.tagName === "IMG") {
+            const isResizableTag = ["IMG", "DIV", "TD", "TABLE", "P", "H1", "H2", "H3", "H4", "H5", "H6"].includes(el.tagName.toUpperCase());
+            if (resizeHandle && isResizableTag) {
                 resizeHandle.style.left = `${rect.right + scrollX - 7}px`;
                 resizeHandle.style.top = `${rect.bottom + scrollY - 7}px`;
                 resizeHandle.style.display = "block";
@@ -921,6 +1000,13 @@ export function LivePreview({
     }, [injectIframeStyles, updateResizeHandlePosition]);
 
     const undo = useCallback(() => {
+        if (commitTimeoutRef.current) {
+            clearTimeout(commitTimeoutRef.current);
+            commitTimeoutRef.current = null;
+        }
+        isEditingRef.current = false;
+        preEditHtmlRef.current = null;
+
         if (undoStack.length === 0) return;
         const currentHtml = iframeRef.current?.contentDocument?.documentElement.outerHTML || "";
         const previousHtml = undoStack[undoStack.length - 1];
@@ -931,6 +1017,13 @@ export function LivePreview({
     }, [undoStack, applyHtmlToIframe]);
 
     const redo = useCallback(() => {
+        if (commitTimeoutRef.current) {
+            clearTimeout(commitTimeoutRef.current);
+            commitTimeoutRef.current = null;
+        }
+        isEditingRef.current = false;
+        preEditHtmlRef.current = null;
+
         if (redoStack.length === 0) return;
         const currentHtml = iframeRef.current?.contentDocument?.documentElement.outerHTML || "";
         const nextHtml = redoStack[redoStack.length - 1];
@@ -1055,6 +1148,12 @@ export function LivePreview({
                 }
             }
 
+            const win = iframeRef.current?.contentWindow;
+            if (win) {
+                win.document.body.style.overflow = "";
+            }
+            document.body.style.overflow = "";
+
             dragTargetRef.current = null;
             dropTargetRef.current = null;
             ghostElementRef.current = null;
@@ -1122,7 +1221,7 @@ export function LivePreview({
         // ── Section hover tracking ──
         let lastHoveredSection: HTMLElement | null = null;
         doc.addEventListener("mousemove", (e) => {
-            // Handle image resizing
+            // Handle element resizing
             if (isResizingRef.current && resizeTargetRef.current) {
                 const deltaX = e.clientX - resizeStartXRef.current;
                 const newWidthPx = resizeStartWidthRef.current + deltaX;
@@ -1132,7 +1231,12 @@ export function LivePreview({
                 resizeTargetRef.current.style.width = `${newWidthPercent}%`;
                 resizeTargetRef.current.setAttribute("width", `${newWidthPercent}%`);
 
-                setSelectedProps(prev => ({ ...prev, width: newWidthPercent }));
+                const deltaY = e.clientY - resizeStartYRef.current;
+                const newHeightPx = Math.max(10, resizeStartHeightRef.current + deltaY);
+                resizeTargetRef.current.style.height = `${newHeightPx}px`;
+                resizeTargetRef.current.setAttribute("height", `${newHeightPx}px`);
+
+                setSelectedProps(prev => ({ ...prev, width: newWidthPercent, height: `${newHeightPx}px` }));
                 updateResizeHandlePosition();
                 return;
             }
@@ -1297,11 +1401,28 @@ export function LivePreview({
             }
         });
 
-        // ── Touch events for mobile block dragging ──
+        // ── Touch events for mobile block dragging and resizing ──
         doc.addEventListener("touchstart", (e) => {
             const target = e.target as HTMLElement;
             const dragHandle = doc.getElementById("ag-drag-handle");
+            const resizeHandle = doc.getElementById("ag-resize-handle");
 
+            // Handle element resize handle touchstart
+            const isResizableTag = selectedElementRef.current && ["IMG", "DIV", "TD", "TABLE", "P", "H1", "H2", "H3", "H4", "H5", "H6"].includes(selectedElementRef.current.tagName.toUpperCase());
+            if (target === resizeHandle && isResizableTag) {
+                e.preventDefault();
+                e.stopPropagation();
+                isResizingRef.current = true;
+                resizeTargetRef.current = selectedElementRef.current as HTMLImageElement;
+                const touch = e.touches[0];
+                resizeStartXRef.current = touch.clientX;
+                resizeStartWidthRef.current = resizeTargetRef.current.offsetWidth;
+                resizeStartYRef.current = touch.clientY;
+                resizeStartHeightRef.current = resizeTargetRef.current.offsetHeight;
+                return;
+            }
+
+            // Handle block drag handle touchstart
             if ((target === dragHandle || dragHandle?.contains(target)) && selectedElementRef.current) {
                 // Prevent scrolling when dragging blocks on touch devices
                 e.preventDefault();
@@ -1311,7 +1432,11 @@ export function LivePreview({
                 isBlockDraggingRef.current = true;
                 dragTargetRef.current = selectedElementRef.current;
 
-                const resizeHandle = doc.getElementById("ag-resize-handle");
+                if (win) {
+                    win.document.body.style.setProperty("overflow", "hidden", "important");
+                }
+                document.body.style.setProperty("overflow", "hidden", "important");
+
                 const deleteHandle2 = doc.getElementById("ag-delete-handle");
                 const editHandle2 = doc.getElementById("ag-edit-handle");
                 if (dragHandle) dragHandle.style.display = "none";
@@ -1344,6 +1469,29 @@ export function LivePreview({
         }, { passive: false });
 
         doc.addEventListener("touchmove", (e) => {
+            // Handle image resize move
+            if (isResizingRef.current && resizeTargetRef.current) {
+                e.preventDefault();
+                const touch = e.touches[0];
+                const deltaX = touch.clientX - resizeStartXRef.current;
+                const newWidthPx = resizeStartWidthRef.current + deltaX;
+                const parentWidth = resizeTargetRef.current.parentElement?.offsetWidth || 1;
+                const newWidthPercent = Math.min(100, Math.max(10, Math.round((newWidthPx / parentWidth) * 100)));
+
+                resizeTargetRef.current.style.width = `${newWidthPercent}%`;
+                resizeTargetRef.current.setAttribute("width", `${newWidthPercent}%`);
+
+                const deltaY = touch.clientY - resizeStartYRef.current;
+                const newHeightPx = Math.max(10, resizeStartHeightRef.current + deltaY);
+                resizeTargetRef.current.style.height = `${newHeightPx}px`;
+                resizeTargetRef.current.setAttribute("height", `${newHeightPx}px`);
+
+                setSelectedProps(prev => ({ ...prev, width: newWidthPercent, height: `${newHeightPx}px` }));
+                updateResizeHandlePosition();
+                return;
+            }
+
+            // Handle block drag move
             if (isBlockDraggingRef.current && ghostElementRef.current && dragTargetRef.current) {
                 e.preventDefault();
                 
@@ -1386,12 +1534,12 @@ export function LivePreview({
         }, { passive: false });
 
         doc.addEventListener("touchend", () => {
-            if (isBlockDraggingRef.current) {
+            if (isBlockDraggingRef.current || isResizingRef.current) {
                 handleGlobalMouseUp();
             }
         });
         doc.addEventListener("touchcancel", () => {
-            if (isBlockDraggingRef.current) {
+            if (isBlockDraggingRef.current || isResizingRef.current) {
                 handleGlobalMouseUp();
             }
         });
@@ -1478,12 +1626,15 @@ export function LivePreview({
                 return;
             }
 
-            if (target === resizeHandle && selectedElementRef.current?.tagName === "IMG") {
+            const isResizableTag = selectedElementRef.current && ["IMG", "DIV", "TD", "TABLE", "P", "H1", "H2", "H3", "H4", "H5", "H6"].includes(selectedElementRef.current.tagName.toUpperCase());
+            if (target === resizeHandle && isResizableTag) {
                 e.preventDefault();
                 isResizingRef.current = true;
                 resizeTargetRef.current = selectedElementRef.current as HTMLImageElement;
                 resizeStartXRef.current = e.clientX;
                 resizeStartWidthRef.current = resizeTargetRef.current.offsetWidth;
+                resizeStartYRef.current = e.clientY;
+                resizeStartHeightRef.current = resizeTargetRef.current.offsetHeight;
                 return;
             }
 
@@ -1558,8 +1709,10 @@ export function LivePreview({
                     objectFit: cs.objectFit || "cover"
                 });
                 setHasSelection(true);
-                if (!isMobile) {
+                if (!isMobileRef.current) {
                     setShowEditPanel(true);
+                } else {
+                    setShowEditPanel(false);
                 }
                 setTimeout(updateResizeHandlePosition, 0);
                 return;
@@ -1576,9 +1729,21 @@ export function LivePreview({
                 const cs = win.getComputedStyle(target);
                 const align = cs.textAlign as "left" | "center" | "right";
 
+                const attrWidth = target.getAttribute("width");
+                let widthPercent = 100;
+                if (attrWidth && attrWidth.endsWith("%")) {
+                    widthPercent = parseInt(attrWidth);
+                } else if (target.style.width && target.style.width.endsWith("%")) {
+                    widthPercent = parseInt(target.style.width);
+                } else {
+                    const parentWidth = target.parentElement?.offsetWidth || 1;
+                    widthPercent = Math.round((target.offsetWidth / parentWidth) * 100);
+                }
+
                 setSelectedProps({
                     ...DEFAULT_PROPS,
                     isImage: false,
+                    width: widthPercent,
                     fontSize: cs.fontSize || 16,
                     fontWeight: cs.fontWeight === "700" || cs.fontWeight === "bold" ? "bold" : cs.fontWeight || "normal",
                     color: rgbToHex(cs.color),
@@ -1613,8 +1778,10 @@ export function LivePreview({
                     elementTag: target.tagName.toLowerCase(),
                 });
                 setHasSelection(true);
-                if (!isMobile) {
+                if (!isMobileRef.current) {
                     setShowEditPanel(true);
+                } else {
+                    setShowEditPanel(false);
                 }
                 updateResizeHandlePosition();
                 return;
@@ -1634,7 +1801,8 @@ export function LivePreview({
             if (target.contentEditable === "true") {
                 const newContent = target.innerHTML || target.textContent || "";
                 setSelectedProps(prev => ({ ...prev, content: newContent }));
-                onMjmlChangeRef.current?.(mjmlRef.current, doc.documentElement.outerHTML);
+                propagateChanges();
+                registerChange();
             }
         });
 
@@ -1642,7 +1810,8 @@ export function LivePreview({
             const target = e.target as HTMLElement;
             if (target && target.getAttribute("contenteditable") === "true") {
                 target.removeAttribute("contenteditable");
-                onMjmlChangeRef.current?.(mjmlRef.current, doc.documentElement.outerHTML);
+                propagateChanges();
+                commitEditing();
                 updateResizeHandlePosition();
             }
         });
@@ -1728,7 +1897,7 @@ export function LivePreview({
         // Polling update for layout shifts
         const interval = setInterval(updateResizeHandlePosition, 500);
         return () => clearInterval(interval);
-    }, [injectIframeStyles, updateResizeHandlePosition, propagateChanges, undo, redo, saveVersion, findSectionFromElement, handleGlobalMouseUp]);
+    }, [injectIframeStyles, updateResizeHandlePosition, propagateChanges, undo, redo, saveVersion, findSectionFromElement, handleGlobalMouseUp, registerChange, commitEditing]);
 
     // Re-inject styles and reposition handle when html changes
     useEffect(() => {
@@ -1759,10 +1928,20 @@ export function LivePreview({
                 if (next.isImage) {
                     const img = el as HTMLImageElement;
                     if (prop.src !== undefined) {
-                        const currentHeight = img.offsetHeight;
-                        img.style.height = `${currentHeight}px`;
-                        img.setAttribute("height", `${currentHeight}px`);
+                        const originalWidth = img.offsetWidth || 1;
+                        const originalHeight = img.offsetHeight || 1;
+                        const aspectRatio = originalWidth / originalHeight;
+                        img.style.aspectRatio = `${aspectRatio}`;
+                        img.style.height = "auto";
                         img.style.objectFit = next.objectFit || "cover";
+
+                        const hasWidth = img.getAttribute("width") || img.style.width;
+                        if (!hasWidth) {
+                            img.style.width = "100%";
+                            img.setAttribute("width", "100%");
+                        }
+                        img.removeAttribute("height");
+
                         img.src = next.src || "";
                         img.setAttribute("src", next.src || "");
                     }
@@ -1817,9 +1996,10 @@ export function LivePreview({
                 }
             }
             propagateChanges();
+            registerChange();
             return next;
         });
-    }, [propagateChanges, updateResizeHandlePosition]);
+    }, [propagateChanges, updateResizeHandlePosition, registerChange]);
 
     // Enable contentEditable on selected element
     const enableTextEdit = () => {
@@ -1894,10 +2074,11 @@ export function LivePreview({
                 }
                 reapplyStyles(el, next);
                 propagateChanges();
+                registerChange();
             }
             return next;
         });
-    }, [reapplyStyles, propagateChanges]);
+    }, [reapplyStyles, propagateChanges, registerChange]);
 
     // Handle image replacement
     const handleReplaceImage = () => {
@@ -1909,17 +2090,38 @@ export function LivePreview({
         if (!file || !clickedImageRef.current) return;
 
         const targetImg = clickedImageRef.current;
-        const currentHeight = targetImg.offsetHeight;
-        targetImg.style.height = `${currentHeight}px`;
-        targetImg.setAttribute("height", `${currentHeight}px`);
+        const originalWidth = targetImg.offsetWidth || 1;
+        const originalHeight = targetImg.offsetHeight || 1;
+        const aspectRatio = originalWidth / originalHeight;
+
+        targetImg.style.aspectRatio = `${aspectRatio}`;
+        targetImg.style.height = "auto";
         targetImg.style.objectFit = "cover";
+
+        const hasWidth = targetImg.getAttribute("width") || targetImg.style.width;
+        if (!hasWidth) {
+            targetImg.style.width = "100%";
+            targetImg.setAttribute("width", "100%");
+        }
+        targetImg.removeAttribute("height");
 
         const reader = new FileReader();
         reader.onload = (ev) => {
             const dataUrl = ev.target?.result as string;
             if (dataUrl && targetImg) {
                 targetImg.src = dataUrl;
-                setSelectedProps(prev => ({ ...prev, src: dataUrl }));
+                
+                let widthPercent = 100;
+                if (hasWidth && typeof hasWidth === "string" && hasWidth.endsWith("%")) {
+                    widthPercent = parseInt(hasWidth);
+                }
+
+                setSelectedProps(prev => ({ 
+                    ...prev, 
+                    src: dataUrl,
+                    width: widthPercent,
+                    objectFit: "cover"
+                }));
                 propagateChanges();
                 setTimeout(updateResizeHandlePosition, 100);
             }
@@ -2049,8 +2251,15 @@ export function LivePreview({
             {isMobile && hasSelection && !showEditPanel && (
                 <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[100] animate-in fade-in slide-in-from-bottom-4 duration-300 pointer-events-auto">
                     <button
-                        onClick={() => setShowEditPanel(true)}
-                        className="flex items-center gap-2 px-6 py-3 bg-violet-600 hover:bg-violet-700 text-white rounded-full shadow-2xl border border-violet-500 font-bold text-xs tracking-wider uppercase active:scale-95 transition-all"
+                        onClick={() => {
+                            if (typeof navigator !== "undefined" && navigator.vibrate) {
+                                navigator.vibrate(50);
+                            }
+                            setShowEditPanel(true);
+                        }}
+                        className={`flex items-center gap-2 px-6 py-3 bg-violet-600 hover:bg-violet-700 text-white rounded-full shadow-2xl border border-violet-500 font-bold text-xs tracking-wider uppercase active:scale-95 transition-all ${
+                            !hasTilted ? "animate-tilt-shake" : ""
+                        }`}
                     >
                         <PencilLine className="w-4 h-4" />
                         <span>Edit {selectedProps.isImage ? "Image" : "Text"} & Style</span>

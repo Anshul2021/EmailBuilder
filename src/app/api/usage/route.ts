@@ -7,7 +7,7 @@ export async function GET(req: NextRequest) {
     try {
         const ip = getClientIp(req);
         const clientId = req.headers.get("x-client-session-id") || undefined;
-        const usage = getUsage(ip, clientId);
+        const usage = await getUsage(ip, clientId);
         return NextResponse.json({ usage });
     } catch (error: unknown) {
         const msg = error instanceof Error ? error.message : String(error);
@@ -22,8 +22,8 @@ export async function POST(req: NextRequest) {
         }
         const ip = getClientIp(req);
         const clientId = req.headers.get("x-client-session-id") || undefined;
-        resetUsage(ip, clientId);
-        const usage = getUsage(ip, clientId);
+        await resetUsage(ip, clientId);
+        const usage = await getUsage(ip, clientId);
         return NextResponse.json({ success: true, usage });
     } catch (error: unknown) {
         const msg = error instanceof Error ? error.message : String(error);

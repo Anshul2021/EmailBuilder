@@ -71,7 +71,7 @@ export async function POST(req: NextRequest) {
         // Apply rate limit for section AI generation
         const ip = getClientIp(req);
         const clientId = req.headers.get("x-client-session-id") || undefined;
-        const usage = getUsage(ip, clientId);
+        const usage = await getUsage(ip, clientId);
 
         // Check if IP is blocked due to Sybil prevention
         if (usage.isIpBlocked) {
@@ -216,7 +216,7 @@ export async function POST(req: NextRequest) {
         }
 
         // Increment usage limit only on successful generation
-        const updatedUsage = incrementUsage(ip, resolvedModel, clientId);
+        const updatedUsage = await incrementUsage(ip, resolvedModel, clientId);
 
         return NextResponse.json({ 
             sectionMjml: sectionCode, 

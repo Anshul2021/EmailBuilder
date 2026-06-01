@@ -610,7 +610,7 @@ Copy each template and substitute {PLACEHOLDERS} with your values.
     background-color="#FFFFFF" padding="0"
   >
     <mj-image
-      src="https://placehold.co/260x160/F3F4F6/374151?text={PRODUCT_1_LABEL}"
+      src="https://placehold.co/260x260/F3F4F6/374151?text={PRODUCT_1_LABEL}"
       width="100%" border-radius="12px 12px 0 0" padding="0"
     />
     <mj-text
@@ -636,7 +636,7 @@ Copy each template and substitute {PLACEHOLDERS} with your values.
     background-color="#FFFFFF" padding="0"
   >
     <mj-image
-      src="https://placehold.co/260x160/F3F4F6/374151?text={PRODUCT_2_LABEL}"
+      src="https://placehold.co/260x260/F3F4F6/374151?text={PRODUCT_2_LABEL}"
       width="100%" border-radius="12px 12px 0 0" padding="0"
     />
     <mj-text

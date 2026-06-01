@@ -102,7 +102,7 @@ export async function POST(req: NextRequest) {
         // Apply rate limit for actual AI generation
         const ip = getClientIp(req);
         const clientId = req.headers.get("x-client-session-id") || undefined;
-        const usage = getUsage(ip, clientId);
+        const usage = await getUsage(ip, clientId);
 
         // Check if IP is blocked due to Sybil prevention
         if (usage.isIpBlocked) {
@@ -307,7 +307,7 @@ Return the complete updated MJML. Modify only what was requested, preserve every
             if (errors?.length > 0) console.warn("[API] MJML warnings:", errors.length);
             
             // Increment usage limit only on successful generation
-            const updatedUsage = incrementUsage(ip, resolvedModel, clientId);
+            const updatedUsage = await incrementUsage(ip, resolvedModel, clientId);
 
             // Return the ORIGINAL mjml (clean) but HTML with markers for section detection and the model that succeeded
             return NextResponse.json({ 

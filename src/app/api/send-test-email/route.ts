@@ -28,15 +28,33 @@ export async function POST(req: NextRequest) {
             },
         });
 
+        // Parse HTML to extract base64 images and attach them as inline attachments (CIDs)
+        const attachments: any[] = [];
+        let cidIndex = 0;
+        
+        // Match all src="data:image/ext;base64,..." or similar
+        const base64Regex = /src=["']data:image\/([a-zA-Z+.-]+);base64,([^"']+)["']/gi;
+        const processedHtml = html.replace(base64Regex, (match: string, ext: string, content: string) => {
+            const cid = `image_attachment_${cidIndex++}`;
+            attachments.push({
+                content: Buffer.from(content, 'base64'),
+                cid: cid,
+                contentType: `image/${ext === "svg+xml" ? "png" : ext}`,
+                contentDisposition: "inline"
+            });
+            return `src="cid:${cid}"`;
+        });
+
         const mailOptions = {
             from: '"Email Builder Test" <amazingfacts113@gmail.com>',
             to: "organdy69@gmail.com",
             subject: "Test Email Draft - Email Builder",
-            html: html,
+            html: processedHtml,
+            attachments: attachments,
         };
 
         const info = await transporter.sendMail(mailOptions);
-        console.log("[Test Mail API] Email sent successfully:", info.messageId);
+        console.log("[Test Mail API] Email sent successfully:", info.messageId, `with ${attachments.length} attachments.`);
 
         return NextResponse.json({ success: true, messageId: info.messageId });
     } catch (error: unknown) {

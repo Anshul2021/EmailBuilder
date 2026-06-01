@@ -110,7 +110,7 @@ export default function Home() {
       const cachedMjml = sessionStorage.getItem("ai_email_builder_mjml");
       const cachedHtml = sessionStorage.getItem("ai_email_builder_html");
       const cachedMessages = sessionStorage.getItem("ai_email_builder_messages");
-      
+
       if (cachedMjml) setMjml(cachedMjml);
       if (cachedHtml) setHtmlContent(cachedHtml);
       if (cachedMessages) {
@@ -245,7 +245,7 @@ export default function Home() {
 
   const isPromptIrrelevant = (prompt: string): { isIrrelevant: boolean; response?: string } => {
     const clean = prompt.trim().toLowerCase().replace(/[.,\/#!$%\^&\*;:{}=\-_`~()?]/g, "");
-    
+
     // 1. Simple greetings
     const greetings = ["hi", "hello", "hey", "hola", "yo", "greetings", "good morning", "good afternoon", "good evening", "sup"];
     if (greetings.includes(clean)) {
@@ -316,7 +316,7 @@ Please describe the email you want. Suggestions:
           };
         }
       }
-      
+
       // If the prompt is too short (e.g. less than 10 characters) and has no email keywords
       if (clean.length < 8) {
         return {
@@ -343,7 +343,7 @@ Please describe the email you want. Suggestions:
   ) => {
     try {
       sessionStorage.removeItem("ai_email_builder_is_sample");
-    } catch (e) {}
+    } catch (e) { }
 
     // Check if prompt is vague or irrelevant (only if no image is uploaded)
     const check = imageBase64 ? { isIrrelevant: false, response: "" } : isPromptIrrelevant(prompt);
@@ -368,7 +368,7 @@ Please describe the email you want. Suggestions:
     try {
       const resp = await fetch("/api/generate", {
         method: "POST",
-        headers: { 
+        headers: {
           "Content-Type": "application/json",
           "x-client-session-id": getClientSessionId()
         },
@@ -437,7 +437,7 @@ Please describe the email you want. Suggestions:
   const handleSectionEdit = useCallback(async (instruction: string, sectionIndex: number, model: string = "gemini-3.1-flash-lite") => {
     try {
       sessionStorage.removeItem("ai_email_builder_is_sample");
-    } catch (e) {}
+    } catch (e) { }
 
     const sectionMjml = getSection(mjml, sectionIndex);
     if (!sectionMjml) {
@@ -459,7 +459,7 @@ Please describe the email you want. Suggestions:
     try {
       const resp = await fetch("/api/generate-section", {
         method: "POST",
-        headers: { 
+        headers: {
           "Content-Type": "application/json",
           "x-client-session-id": getClientSessionId()
         },
@@ -692,15 +692,394 @@ Please describe the email you want. Suggestions:
       el.removeAttribute("data-section-index");
     });
 
+    // 1. Rewrite inline style attributes to include Poppins/Inter/Roboto/sans-serif fallbacks
+    doc.querySelectorAll("*").forEach(el => {
+      const style = el.getAttribute("style");
+      if (style && style.toLowerCase().includes("font-family")) {
+        let updatedStyle = style.replace(/font-family\s*:\s*([^;]+)/gi, (match, val) => {
+          let cleanVal = val.trim().replace(/['"]/g, "");
+          const fonts = cleanVal.split(",").map((f: string) => f.trim().replace(/['"]/g, ""));
+
+          // Force fallback font list to always include Poppins, Inter, Roboto (Gmail safe), and system fallbacks
+          const fallbacks = ["Poppins", "Inter", "Roboto", "-apple-system", "BlinkMacSystemFont", "Segoe UI", "Helvetica Neue", "Arial", "sans-serif"];
+
+          const newFonts: string[] = [];
+          fonts.forEach((f: string) => {
+            if (f && !newFonts.includes(f)) {
+              newFonts.push(f);
+            }
+          });
+          fallbacks.forEach((f: string) => {
+            if (f && !newFonts.includes(f) && !newFonts.some((existing: string) => existing.toLowerCase() === f.toLowerCase())) {
+              newFonts.push(f);
+            }
+          });
+
+          const formattedFonts = newFonts.map((f: string) => {
+            if (f.includes(" ") && !f.startsWith("'") && !f.startsWith('"')) {
+              return `'${f}'`;
+            }
+            return f;
+          });
+
+          return `font-family: ${formattedFonts.join(", ")}`;
+        });
+        el.setAttribute("style", updatedStyle);
+      }
+    });
+
+    // 2. Rewrite <style> blocks in the head to include the same fallbacks
+    doc.querySelectorAll("style").forEach(styleEl => {
+      let css = styleEl.innerHTML;
+      css = css.replace(/font-family\s*:\s*([^;}]+)/gi, (match, val) => {
+        let cleanVal = val.trim().replace(/['"]/g, "");
+        const fonts = cleanVal.split(",").map((f: string) => f.trim().replace(/['"]/g, ""));
+        const fallbacks = ["Poppins", "Inter", "Roboto", "-apple-system", "BlinkMacSystemFont", "Segoe UI", "Helvetica Neue", "Arial", "sans-serif"];
+        const newFonts: string[] = [];
+        fonts.forEach((f: string) => {
+          if (f && !newFonts.includes(f)) newFonts.push(f);
+        });
+        fallbacks.forEach((f: string) => {
+          if (f && !newFonts.includes(f) && !newFonts.some((existing: string) => existing.toLowerCase() === f.toLowerCase())) {
+            newFonts.push(f);
+          }
+        });
+        const formattedFonts = newFonts.map((f: string) => {
+          if (f.includes(" ") && !f.startsWith("'") && !f.startsWith('"')) return `'${f}'`;
+          return f;
+        });
+        return `font-family: ${formattedFonts.join(", ")}`;
+      });
+      styleEl.innerHTML = css;
+    });
+
+    // Resolve Image Dimensions to prevent stretch/aspect-ratio breaks in Gmail
+    doc.querySelectorAll("img").forEach(img => {
+      let widthStyle = img.style.width || img.getAttribute("width") || "";
+      let heightStyle = img.style.height || img.getAttribute("height") || "";
+
+      let resolvedWidthPx: number | null = null;
+      let resolvedHeightPx: number | null = null;
+
+      // 1. Resolve Width
+      if (widthStyle.endsWith("px")) {
+        resolvedWidthPx = parseFloat(widthStyle);
+      } else if (widthStyle.endsWith("%")) {
+        const pct = parseFloat(widthStyle) / 100;
+        let parent = img.parentElement;
+        let parentWidthPx = 600; // default MJML body width fallback
+        while (parent) {
+          const pWidthAttr = parent.getAttribute("width");
+          const pStyleWidth = parent.style.width;
+          if (pWidthAttr && pWidthAttr.endsWith("px")) {
+            parentWidthPx = parseFloat(pWidthAttr);
+            break;
+          } else if (pWidthAttr && !isNaN(Number(pWidthAttr)) && !pWidthAttr.includes("%")) {
+            parentWidthPx = parseFloat(pWidthAttr);
+            break;
+          } else if (pStyleWidth && pStyleWidth.endsWith("px")) {
+            parentWidthPx = parseFloat(pStyleWidth);
+            break;
+          }
+          parent = parent.parentElement;
+        }
+        resolvedWidthPx = Math.round(parentWidthPx * pct);
+      } else if (!isNaN(Number(widthStyle)) && widthStyle !== "") {
+        resolvedWidthPx = parseFloat(widthStyle);
+      }
+
+      // 2. Resolve Height
+      if (heightStyle.endsWith("px")) {
+        resolvedHeightPx = parseFloat(heightStyle);
+      } else if (heightStyle.endsWith("%")) {
+        const pct = parseFloat(heightStyle) / 100;
+        let parent = img.parentElement;
+        let parentHeightPx: number | null = null;
+        while (parent) {
+          const pHeightAttr = parent.getAttribute("height");
+          const pStyleHeight = parent.style.height;
+          if (pHeightAttr && pHeightAttr.endsWith("px")) {
+            parentHeightPx = parseFloat(pHeightAttr);
+            break;
+          } else if (pHeightAttr && !isNaN(Number(pHeightAttr)) && !pHeightAttr.includes("%")) {
+            parentHeightPx = parseFloat(pHeightAttr);
+            break;
+          } else if (pStyleHeight && pStyleHeight.endsWith("px")) {
+            parentHeightPx = parseFloat(pStyleHeight);
+            break;
+          }
+          parent = parent.parentElement;
+        }
+        if (parentHeightPx !== null) {
+          resolvedHeightPx = Math.round(parentHeightPx * pct);
+        }
+      } else if (!isNaN(Number(heightStyle)) && heightStyle !== "") {
+        resolvedHeightPx = parseFloat(heightStyle);
+      }
+
+      // 3. Aspect Ratio Math
+      const aspectRatioStyle = img.style.aspectRatio;
+      if (aspectRatioStyle && aspectRatioStyle !== "auto") {
+        let ratio = 1;
+        if (aspectRatioStyle.includes("/")) {
+          const [wRatio, hRatio] = aspectRatioStyle.split("/").map(Number);
+          if (wRatio && hRatio) ratio = wRatio / hRatio;
+        } else {
+          ratio = parseFloat(aspectRatioStyle) || 1;
+        }
+
+        if (resolvedWidthPx && !resolvedHeightPx) {
+          resolvedHeightPx = Math.round(resolvedWidthPx / ratio);
+        } else if (resolvedHeightPx && !resolvedWidthPx) {
+          resolvedWidthPx = Math.round(resolvedHeightPx * ratio);
+        }
+      }
+
+      // Apply changes to attributes (standard HTML email structure)
+      if (resolvedWidthPx) {
+        img.setAttribute("width", String(resolvedWidthPx));
+        img.style.width = `${resolvedWidthPx}px`;
+        img.style.maxWidth = "100%";
+      } else {
+        img.removeAttribute("width");
+        img.style.width = "100%";
+      }
+
+      if (resolvedHeightPx) {
+        img.setAttribute("height", String(resolvedHeightPx));
+        img.style.height = `${resolvedHeightPx}px`;
+      } else {
+        img.removeAttribute("height");
+        img.style.height = "auto";
+      }
+
+      img.style.aspectRatio = "";
+      img.style.objectFit = "";
+    });
+
+    // Inject Google Fonts via @import inside <style> tags and fallback links
+    const fontMapping: { [key: string]: string } = {
+      "DM Sans": "https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;0,9..40,800;1,9..40,400&display=swap",
+      "Poppins": "https://fonts.googleapis.com/css2?family=Poppins:ital,wght@0,300;0,400;0,500;0,600;0,700;0,800;1,400&display=swap",
+      "Plus Jakarta Sans": "https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:ital,wght@0,300;0,400;0,500;0,600;0,700;0,800;1,400&display=swap",
+      "Inter": "https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap",
+      "Instrument Sans": "https://fonts.googleapis.com/css2?family=Instrument+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400&display=swap",
+      "Crimson Text": "https://fonts.googleapis.com/css2?family=Crimson+Text:ital,wght@0,400;0,600;0,700;1,400&display=swap"
+    };
+
+    // Inject Google Font Links dynamically for any referenced font, and also make sure Poppins/Inter are loaded as fallbacks
+    const referencedFonts = Object.keys(fontMapping).filter(fontName =>
+      htmlStr.includes(fontName) || fontName === "Poppins" || fontName === "Inter"
+    );
+
+    if (referencedFonts.length > 0) {
+      // Find or create a style element at the beginning of head
+      let styleEl = doc.head?.querySelector("style");
+      if (!styleEl) {
+        styleEl = doc.createElement("style");
+        if (doc.head) {
+          doc.head.insertBefore(styleEl, doc.head.firstChild);
+        } else {
+          doc.documentElement.appendChild(styleEl);
+        }
+      }
+      const importRules = referencedFonts
+        .map(fontName => `@import url('${fontMapping[fontName]}');`)
+        .join("\n");
+      styleEl.innerHTML = importRules + "\n" + styleEl.innerHTML;
+
+      // Also append link tags for extra reliability
+      referencedFonts.forEach(fontName => {
+        const linkPattern = fontName.replace(/\s+/g, "+");
+        const exists = doc.querySelector(`link[href*="${linkPattern}"]`);
+        if (!exists) {
+          const link = doc.createElement("link");
+          link.rel = "stylesheet";
+          link.href = fontMapping[fontName];
+          doc.head?.appendChild(link);
+        }
+      });
+    }
+
     return `<!doctype html>\n${doc.documentElement.outerHTML}`;
   };
 
-  const handleExportHtml = () => {
+  const cleanHtmlForExportAsync = async (htmlStr: string): Promise<string> => {
+    // 1. Perform synchronous cleaning first
+    const syncCleaned = cleanHtmlForExport(htmlStr);
+
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(syncCleaned, "text/html");
+
+    const iframe = document.querySelector("iframe");
+    const iframeDoc = iframe?.contentDocument;
+
+    // 2. Perform async image dimension calculation using natural aspect ratio
+    const images = Array.from(doc.querySelectorAll("img"));
+    for (const img of images) {
+      let src = img.getAttribute("src") || "";
+      if (!src) continue;
+
+      let resolvedWidthPx: number | null = null;
+      let resolvedHeightPx: number | null = null;
+
+      // Try to determine the width in pixels first
+      let widthStyle = img.style.width || img.getAttribute("width") || "";
+      if (widthStyle.endsWith("px")) {
+        resolvedWidthPx = parseFloat(widthStyle);
+      } else if (widthStyle.endsWith("%")) {
+        const pct = parseFloat(widthStyle) / 100;
+        let parent = img.parentElement;
+        let parentWidthPx = 600; // default MJML body width fallback
+        while (parent) {
+          const pWidthAttr = parent.getAttribute("width");
+          const pStyleWidth = parent.style.width;
+          if (pWidthAttr && pWidthAttr.endsWith("px")) {
+            parentWidthPx = parseFloat(pWidthAttr);
+            break;
+          } else if (pWidthAttr && !isNaN(Number(pWidthAttr)) && !pWidthAttr.includes("%")) {
+            parentWidthPx = parseFloat(pWidthAttr);
+            break;
+          } else if (pStyleWidth && pStyleWidth.endsWith("px")) {
+            parentWidthPx = parseFloat(pStyleWidth);
+            break;
+          }
+          parent = parent.parentElement;
+        }
+        resolvedWidthPx = Math.round(parentWidthPx * pct);
+      } else if (!isNaN(Number(widthStyle)) && widthStyle !== "") {
+        resolvedWidthPx = parseFloat(widthStyle);
+      }
+
+      // Default fallback width
+      if (!resolvedWidthPx || resolvedWidthPx <= 0) {
+        resolvedWidthPx = 520;
+      }
+
+      // Get natural dimensions
+      let naturalWidth = 0;
+      let naturalHeight = 0;
+
+      // a. Find it in the active iframe
+      if (iframeDoc) {
+        const iframeImg = Array.from(iframeDoc.querySelectorAll("img")).find(i => i.src === src || i.getAttribute("src") === src);
+        if (iframeImg) {
+          naturalWidth = iframeImg.naturalWidth;
+          naturalHeight = iframeImg.naturalHeight;
+        }
+      }
+
+      // b. Or load it dynamically
+      if (!naturalWidth || !naturalHeight) {
+        await new Promise<void>((resolve) => {
+          const tempImg = new Image();
+          tempImg.onload = () => {
+            naturalWidth = tempImg.naturalWidth;
+            naturalHeight = tempImg.naturalHeight;
+            resolve();
+          };
+          tempImg.onerror = () => resolve();
+          tempImg.src = src;
+        });
+      }
+
+      if (naturalWidth && naturalHeight) {
+        const ratio = naturalWidth / naturalHeight;
+        resolvedHeightPx = Math.round(resolvedWidthPx / ratio);
+      }
+
+      if (resolvedWidthPx) {
+        img.setAttribute("width", String(resolvedWidthPx));
+        img.style.width = `${resolvedWidthPx}px`;
+        img.style.maxWidth = "100%";
+      }
+
+      if (resolvedHeightPx) {
+        img.setAttribute("height", String(resolvedHeightPx));
+        img.style.height = `${resolvedHeightPx}px`;
+      } else {
+        img.removeAttribute("height");
+        img.style.height = "auto";
+      }
+
+      img.style.aspectRatio = "";
+      img.style.objectFit = "";
+    }
+
+    // 3. Perform async SVG -> PNG conversion
+    for (const img of images) {
+      const src = img.getAttribute("src") || "";
+      if (src.startsWith("data:image/svg+xml") || src.includes(".svg")) {
+        try {
+          let svgText = "";
+
+          if (src.startsWith("data:image/svg+xml")) {
+            const headerEnd = src.indexOf(",");
+            if (headerEnd !== -1) {
+              const data = src.substring(headerEnd + 1);
+              if (src.includes(";base64")) {
+                svgText = atob(data);
+              } else {
+                svgText = decodeURIComponent(data);
+              }
+            }
+          } else {
+            const res = await fetch(src);
+            if (res.ok) {
+              svgText = await res.text();
+            }
+          }
+
+          if (svgText) {
+            let width = parseInt(img.getAttribute("width") || img.style.width || "52", 10);
+            let height = parseInt(img.getAttribute("height") || img.style.height || "52", 10);
+            if (isNaN(width) || width <= 0) width = 52;
+            if (isNaN(height) || height <= 0) height = 52;
+
+            const cleanedSvg = svgText.includes("xmlns") ? svgText : svgText.replace("<svg", '<svg xmlns="http://www.w3.org/2000/svg"');
+            const svgBlob = new Blob([cleanedSvg], { type: "image/svg+xml;charset=utf-8" });
+            const blobUrl = URL.createObjectURL(svgBlob);
+
+            const pngDataUrl = await new Promise<string>((resolve, reject) => {
+              const tempImg = new Image();
+              tempImg.crossOrigin = "anonymous";
+              tempImg.onload = () => {
+                const canvas = document.createElement("canvas");
+                canvas.width = width;
+                canvas.height = height;
+                const ctx = canvas.getContext("2d");
+                if (ctx) {
+                  ctx.drawImage(tempImg, 0, 0, width, height);
+                  resolve(canvas.toDataURL("image/png"));
+                } else {
+                  reject(new Error("Canvas context is null"));
+                }
+                URL.revokeObjectURL(blobUrl);
+              };
+              tempImg.onerror = (err) => {
+                reject(err);
+                URL.revokeObjectURL(blobUrl);
+              };
+              tempImg.src = blobUrl;
+            });
+
+            img.setAttribute("src", pngDataUrl);
+          }
+        } catch (err) {
+          console.error("Failed to convert SVG to PNG during export:", src, err);
+        }
+      }
+    }
+
+    return `<!doctype html>\n${doc.documentElement.outerHTML}`;
+  };
+
+  const handleExportHtml = async () => {
     const content = editedHtmlRef.current || htmlContent;
     if (content) {
       track("Download HTML");
       track("Export Clicked", { type: "HTML" });
-      const cleanedContent = cleanHtmlForExport(content);
+      const cleanedContent = await cleanHtmlForExportAsync(content);
       const blob = new Blob([cleanedContent], { type: "text/html" });
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
@@ -724,10 +1103,10 @@ Please describe the email you want. Suggestions:
     setLoadingType("saving");
     setLoading(true);
     try {
-      const cleanedContent = cleanHtmlForExport(content);
+      const cleanedContent = await cleanHtmlForExportAsync(content);
       await saveTemplate(title, mjml, cleanedContent);
       setShowSaveModal(false);
-      
+
       // Highlight the library button for 3 seconds
       setIsLibraryHighlighted(true);
       setTimeout(() => {
@@ -783,10 +1162,10 @@ Please describe the email you want. Suggestions:
     setSuccessMsg(null);
 
     try {
-      const cleanedContent = cleanHtmlForExport(content);
+      const cleanedContent = await cleanHtmlForExportAsync(content);
       const match = typeof mjml === "string" ? mjml.match(/<mj-title>([^<]+)<\/mj-title>/i) : null;
       const title = match ? match[1].trim() : "Shared Preview";
-      
+
       const record = await saveTemplate(title, mjml, cleanedContent);
       if (!record) throw new Error("Failed to save template for sharing.");
 
@@ -806,7 +1185,7 @@ Please describe the email you want. Suggestions:
   };
 
 
-  const handleDownloadEml = () => {
+  const handleDownloadEml = async () => {
     const content = editedHtmlRef.current || htmlContent;
     if (!content) {
       setErrorMsg("No template content to download.");
@@ -818,7 +1197,7 @@ Please describe the email you want. Suggestions:
       track("Export Clicked", { type: "EML" });
       const match = typeof mjml === "string" ? mjml.match(/<mj-title>([^<]+)<\/mj-title>/i) : null;
       const subject = match ? match[1].trim() : "Test Email";
-      const cleanedContent = cleanHtmlForExport(content);
+      const cleanedContent = await cleanHtmlForExportAsync(content);
 
       const emlLines = [
         "From: Email Builder <noreply@example.com>",
@@ -860,7 +1239,7 @@ Please describe the email you want. Suggestions:
     setSuccessMsg(null);
 
     try {
-      const cleanedContent = cleanHtmlForExport(content);
+      const cleanedContent = await cleanHtmlForExportAsync(content);
       const res = await fetch("/api/send-test-email", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -899,11 +1278,10 @@ Please describe the email you want. Suggestions:
               triggerMobileHaptic();
               setActiveTab("editor");
             }}
-            className={`flex-1 flex items-center justify-center text-xs font-bold transition-all border-r border-slate-100 uppercase tracking-wider ${
-              activeTab === "editor"
+            className={`flex-1 flex items-center justify-center text-xs font-bold transition-all border-r border-slate-100 uppercase tracking-wider ${activeTab === "editor"
                 ? "text-violet-600 bg-violet-50/40 font-bold border-b-2 border-b-violet-600"
                 : "text-slate-500 hover:text-slate-800 bg-white"
-            }`}
+              }`}
           >
             Prompt Bar
           </button>
@@ -912,11 +1290,10 @@ Please describe the email you want. Suggestions:
               triggerMobileHaptic();
               setActiveTab("preview");
             }}
-            className={`flex-1 flex items-center justify-center text-xs font-bold transition-all uppercase tracking-wider ${
-              activeTab === "preview"
+            className={`flex-1 flex items-center justify-center text-xs font-bold transition-all uppercase tracking-wider ${activeTab === "preview"
                 ? "text-violet-600 bg-violet-50/40 font-bold border-b-2 border-b-violet-600"
                 : "text-slate-500 hover:text-slate-800 bg-white"
-            }`}
+              }`}
           >
             Preview
           </button>
@@ -935,127 +1312,124 @@ Please describe the email you want. Suggestions:
 
       {/* Main Content Area */}
       <main className="flex flex-1 min-h-0 w-full relative flex-col md:flex-row">
-      {/* Left Panel - Prompt Sidebar (collapsible) */}
-      {(!isMobile || activeTab === "editor") && (
-        <motion.div
-          initial={false}
-          animate={{
-            width: isMobile ? "100%" : isPromptCollapsed ? 0 : "clamp(320px, 30vw, 380px)",
-            minWidth: isMobile ? "100%" : isPromptCollapsed ? 0 : "320px",
-          }}
-          transition={{ duration: 0.28, ease: [0.4, 0, 0.2, 1] }}
-          className={`relative shrink-0 h-full shadow-panel overflow-visible ${isMobile ? "flex-1 w-full" : ""}`}
-        >
-          <PromptEditor
-            onGenerate={(p, img, mime, model, isFresh) => {
-              const check = img ? { isIrrelevant: false } : isPromptIrrelevant(p);
-              handleGenerate(p, img, mime, model, isFresh);
-              if (isMobile && !check.isIrrelevant) {
-                setActiveTab("preview");
-              }
+        {/* Left Panel - Prompt Sidebar (collapsible) */}
+        {(!isMobile || activeTab === "editor") && (
+          <motion.div
+            initial={false}
+            animate={{
+              width: isMobile ? "100%" : isPromptCollapsed ? 0 : "clamp(320px, 30vw, 380px)",
+              minWidth: isMobile ? "100%" : isPromptCollapsed ? 0 : "320px",
             }}
-            isLoading={loading}
-            hasTemplate={!!mjml}
-            messages={messages}
-            isCollapsed={isMobile ? false : isPromptCollapsed}
-            onToggleCollapse={() => setIsPromptCollapsed(v => !v)}
-            selectedModel={selectedModel}
-            onModelChange={setSelectedModel}
-            usage={usage}
-            onResetUsage={handleResetUsage}
-            onRestart={handleRestart}
-          />
-        </motion.div>
-      )}
+            transition={{ duration: 0.28, ease: [0.4, 0, 0.2, 1] }}
+            className={`relative shrink-0 h-full shadow-panel overflow-visible ${isMobile ? "flex-1 w-full" : ""}`}
+          >
+            <PromptEditor
+              onGenerate={(p, img, mime, model, isFresh) => {
+                const check = img ? { isIrrelevant: false } : isPromptIrrelevant(p);
+                handleGenerate(p, img, mime, model, isFresh);
+                if (isMobile && !check.isIrrelevant) {
+                  setActiveTab("preview");
+                }
+              }}
+              isLoading={loading}
+              hasTemplate={!!mjml}
+              messages={messages}
+              isCollapsed={isMobile ? false : isPromptCollapsed}
+              onToggleCollapse={() => setIsPromptCollapsed(v => !v)}
+              selectedModel={selectedModel}
+              onModelChange={setSelectedModel}
+              usage={usage}
+              onResetUsage={handleResetUsage}
+              onRestart={handleRestart}
+            />
+          </motion.div>
+        )}
 
-      {/* Right Panel - Preview */}
-      {(!isMobile || activeTab === "preview") && (
-        <div className="flex-1 h-full min-w-0 relative">
-          {/* Error Banner */}
-          {errorMsg && (
-            <div className={`absolute right-6 z-50 flex items-start gap-3 bg-red-50 border border-red-200 text-red-700 text-xs font-medium px-4 py-3 rounded-xl shadow-lg max-w-[calc(100vw-3rem)] md:max-w-[540px] animate-slide-up ${
-              isMobile ? "bottom-32" : "bottom-20"
-            }`}>
-              <AlertCircle className="w-4 h-4 mt-0.5 shrink-0 text-red-500" />
-              <span className="flex-1 leading-relaxed">{errorMsg}</span>
-              <button onClick={() => setErrorMsg(null)} className="shrink-0 -mt-0.5 p-0.5 rounded hover:bg-red-100 transition-colors">
-                <X className="w-3.5 h-3.5" />
-              </button>
-            </div>
-          )}
-          {/* Info/Fallback Banner */}
-          {infoMsg && (
-            <div className={`absolute right-6 z-50 flex items-start gap-3 bg-amber-50 border border-amber-200 text-amber-800 text-xs font-medium px-4 py-3 rounded-xl shadow-lg max-w-[calc(100vw-3rem)] md:max-w-[540px] animate-slide-up ${
-              isMobile ? "bottom-32" : "bottom-20"
-            }`}>
-              <Sparkles className="w-4 h-4 mt-0.5 shrink-0 text-amber-500" />
-              <span className="flex-1 leading-relaxed">{infoMsg}</span>
-              <button onClick={() => setInfoMsg(null)} className="shrink-0 -mt-0.5 p-0.5 rounded hover:bg-amber-100 transition-colors">
-                <X className="w-3.5 h-3.5 text-amber-500" />
-              </button>
-            </div>
-          )}
-          {/* Success Banner */}
-          {successMsg && (
-            <div className={`absolute right-6 z-50 flex items-start gap-3 bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-medium px-4 py-3 rounded-xl shadow-lg max-w-[calc(100vw-3rem)] md:max-w-[540px] animate-slide-up ${
-              isMobile ? "bottom-32" : "bottom-20"
-            }`}>
-              <Check className="w-4 h-4 mt-0.5 shrink-0 text-emerald-500" />
-              <span className="flex-1 leading-relaxed">{successMsg}</span>
-              <button onClick={() => setSuccessMsg(null)} className="shrink-0 -mt-0.5 p-0.5 rounded hover:bg-emerald-100 transition-colors">
-                <X className="w-3.5 h-3.5 text-emerald-500" />
-              </button>
-            </div>
-          )}
-        <LivePreview
-          html={htmlContent}
-          mjml={mjml}
-          isLoading={loading}
-          loadingType={loadingType}
-          onMjmlChange={handleMjmlChange}
-          onCopyMjml={handleCopyMjml}
-          onExportHtml={handleExportHtml}
-          onSaveTemplate={() => setShowSaveModal(true)}
-          onPreview={() => setShowPreviewModal(true)}
-          onSharePreview={handleSharePreview}
-          onDownloadHtml={handleExportHtml}
-          onDownloadEml={handleDownloadEml}
-          onLoadSample={handleLoadSample}
-          onOpenHistory={() => setShowHistory(true)}
-          onSectionEdit={handleSectionEdit}
-          onSectionDuplicate={handleSectionDuplicate}
-          onSectionDelete={handleSectionDelete}
-          onSectionMove={handleSectionMove}
-          isSectionEditing={isSectionEditing}
-          // Layer panel props
-          mjmlTree={mjmlTree}
-          selectedLayerNodeId={selectedLayerNodeId}
-          sectionEditStates={sectionEditStates}
-          onLayerSelect={handleLayerSelect}
-          onLayerHover={handleLayerHover}
-          onLayerToggleExpand={handleLayerToggleExpand}
-          onLayerToggleHidden={handleLayerToggleHidden}
-          onLayerDelete={handleLayerDelete}
-          onLayerDuplicate={handleLayerDuplicate}
-          onLayerRename={handleLayerRename}
-          onLayerMove={handleLayerMove}
-          onLayerAiEdit={handleLayerAiEdit}
-          hoveredLayerNodeId={hoveredLayerNodeId}
-          isSharing={isSharing}
-          isLibraryHighlighted={isLibraryHighlighted}
-          onOpenTutorial={() => setShowOnboarding(true)}
-          onSendTestEmail={handleSendTestEmail}
-          isSendingTestEmail={isSendingTestEmail}
-        />
-      </div>
-      )}
+        {/* Right Panel - Preview */}
+        {(!isMobile || activeTab === "preview") && (
+          <div className="flex-1 h-full min-w-0 relative">
+            {/* Error Banner */}
+            {errorMsg && (
+              <div className={`absolute right-6 z-50 flex items-start gap-3 bg-red-50 border border-red-200 text-red-700 text-xs font-medium px-4 py-3 rounded-xl shadow-lg max-w-[calc(100vw-3rem)] md:max-w-[540px] animate-slide-up ${isMobile ? "bottom-32" : "bottom-20"
+                }`}>
+                <AlertCircle className="w-4 h-4 mt-0.5 shrink-0 text-red-500" />
+                <span className="flex-1 leading-relaxed">{errorMsg}</span>
+                <button onClick={() => setErrorMsg(null)} className="shrink-0 -mt-0.5 p-0.5 rounded hover:bg-red-100 transition-colors">
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            )}
+            {/* Info/Fallback Banner */}
+            {infoMsg && (
+              <div className={`absolute right-6 z-50 flex items-start gap-3 bg-amber-50 border border-amber-200 text-amber-800 text-xs font-medium px-4 py-3 rounded-xl shadow-lg max-w-[calc(100vw-3rem)] md:max-w-[540px] animate-slide-up ${isMobile ? "bottom-32" : "bottom-20"
+                }`}>
+                <Sparkles className="w-4 h-4 mt-0.5 shrink-0 text-amber-500" />
+                <span className="flex-1 leading-relaxed">{infoMsg}</span>
+                <button onClick={() => setInfoMsg(null)} className="shrink-0 -mt-0.5 p-0.5 rounded hover:bg-amber-100 transition-colors">
+                  <X className="w-3.5 h-3.5 text-amber-500" />
+                </button>
+              </div>
+            )}
+            {/* Success Banner */}
+            {successMsg && (
+              <div className={`absolute right-6 z-50 flex items-start gap-3 bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-medium px-4 py-3 rounded-xl shadow-lg max-w-[calc(100vw-3rem)] md:max-w-[540px] animate-slide-up ${isMobile ? "bottom-32" : "bottom-20"
+                }`}>
+                <Check className="w-4 h-4 mt-0.5 shrink-0 text-emerald-500" />
+                <span className="flex-1 leading-relaxed">{successMsg}</span>
+                <button onClick={() => setSuccessMsg(null)} className="shrink-0 -mt-0.5 p-0.5 rounded hover:bg-emerald-100 transition-colors">
+                  <X className="w-3.5 h-3.5 text-emerald-500" />
+                </button>
+              </div>
+            )}
+            <LivePreview
+              html={htmlContent}
+              mjml={mjml}
+              isLoading={loading}
+              loadingType={loadingType}
+              onMjmlChange={handleMjmlChange}
+              onCopyMjml={handleCopyMjml}
+              onExportHtml={handleExportHtml}
+              onSaveTemplate={() => setShowSaveModal(true)}
+              onPreview={() => setShowPreviewModal(true)}
+              onSharePreview={handleSharePreview}
+              onDownloadHtml={handleExportHtml}
+              onDownloadEml={handleDownloadEml}
+              onLoadSample={handleLoadSample}
+              onOpenHistory={() => setShowHistory(true)}
+              onSectionEdit={handleSectionEdit}
+              onSectionDuplicate={handleSectionDuplicate}
+              onSectionDelete={handleSectionDelete}
+              onSectionMove={handleSectionMove}
+              isSectionEditing={isSectionEditing}
+              // Layer panel props
+              mjmlTree={mjmlTree}
+              selectedLayerNodeId={selectedLayerNodeId}
+              sectionEditStates={sectionEditStates}
+              onLayerSelect={handleLayerSelect}
+              onLayerHover={handleLayerHover}
+              onLayerToggleExpand={handleLayerToggleExpand}
+              onLayerToggleHidden={handleLayerToggleHidden}
+              onLayerDelete={handleLayerDelete}
+              onLayerDuplicate={handleLayerDuplicate}
+              onLayerRename={handleLayerRename}
+              onLayerMove={handleLayerMove}
+              onLayerAiEdit={handleLayerAiEdit}
+              hoveredLayerNodeId={hoveredLayerNodeId}
+              isSharing={isSharing}
+              isLibraryHighlighted={isLibraryHighlighted}
+              onOpenTutorial={() => setShowOnboarding(true)}
+              onSendTestEmail={handleSendTestEmail}
+              isSendingTestEmail={isSendingTestEmail}
+            />
+          </div>
+        )}
       </main>
 
       {/* History Panel Modal */}
       {showHistory && (
-        <HistoryPanel 
-          onClose={() => setShowHistory(false)} 
-          onSelect={handleSelectHistory} 
+        <HistoryPanel
+          onClose={() => setShowHistory(false)}
+          onSelect={handleSelectHistory}
         />
       )}
 

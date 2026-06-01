@@ -1056,7 +1056,7 @@ export function PromptEditor({
                     `}} />
 
                     {/* Quick Modification Tags / Suggestion Chips as a scrollable strip */}
-                    {!limitReached && !isLoading && (
+                    {!limitReached && !isLoading && messages.some(m => m.role === "user") && (
                         <div className="flex gap-2 overflow-x-auto hide-scroll-bar py-1 px-0.5 scroll-smooth">
                             {QUICK_ACTIONS.map((qa) => (
                                 <button
